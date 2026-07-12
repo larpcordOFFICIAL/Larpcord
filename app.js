@@ -27,5 +27,3 @@ document.getElementById("logout-btn").addEventListener("click", () => {
 });
 
 document.getElementById("rail-add-btn").addEventListener("click", () => {
-  alert("Servers are coming in a future step!");
-});
