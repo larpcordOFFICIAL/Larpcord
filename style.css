@@ -105,3 +105,139 @@ body {
   font-size: 14px;
   min-height: 18px;
 }
+/* --- App shell (Discord-style layout) --- */
+.app-body { display: block; padding: 0; }
+
+.app-container {
+  display: flex;
+  flex-wrap: wrap;
+  height: 100vh;
+  width: 100%;
+}
+
+.server-rail {
+  width: 64px;
+  background-color: #050507;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 12px;
+  gap: 10px;
+}
+
+.rail-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  background-color: #16161c;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rail-home { background-color: #0000ff; }
+
+.sidebar {
+  width: 260px;
+  background-color: #101014;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #1c1c22;
+}
+
+.sidebar-header {
+  padding: 18px 16px 8px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.empty-friends {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8a8fa3;
+  text-align: center;
+  padding: 20px;
+}
+
+.empty-sub { font-size: 13px; margin-top: 4px; }
+
+.profile-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: #0a0a0f;
+}
+
+.avatar-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.profile-info { flex: 1; min-width: 0; }
+
+.profile-name {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-status {
+  font-size: 12px;
+  color: #8a8fa3;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #4ade80;
+  display: inline-block;
+}
+
+#logout-btn {
+  background: none;
+  border: none;
+  color: #8a8fa3;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.main-area {
+  flex: 1;
+  min-width: 280px;
+  background-color: #0a0a0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-main { text-align: center; color: #8a8fa3; }
+
+.empty-logo {
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 0 30px rgba(0, 0, 255, 0.5);
+  margin-bottom: 10px;
+}
+
