@@ -15,6 +15,12 @@ let myUsername = null;
 let currentFriend = null;
 let currentMessagesUnsubscribe = null;
 
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -49,7 +55,7 @@ function renderRequests(requests) {
   requests.forEach((req) => {
     const item = document.createElement("div");
     item.className = "request-item";
-    item.innerHTML = `<span>${req.fromUsername}</span><div class="request-buttons"><button class="accept-btn">✓</button><button class="decline-btn">✕</button></div>`;
+    item.innerHTML = `<span>${escapeHtml(req.fromUsername)}</span><div class="request-buttons"><button class="accept-btn">✓</button><button class="decline-btn">✕</button></div>`;
     item.querySelector(".accept-btn").addEventListener("click", () => acceptFriendRequest(db, req));
     item.querySelector(".decline-btn").addEventListener("click", () => declineFriendRequest(db, req.id));
     list.appendChild(item);
@@ -68,7 +74,7 @@ function renderFriends(friends) {
   friends.forEach((friend) => {
     const item = document.createElement("div");
     item.className = "friend-item";
-    item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span>${friend.username}</span>`;
+    item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span>${escapeHtml(friend.username)}</span>`;
     item.addEventListener("click", () => openChat(friend));
     list.appendChild(item);
   });
@@ -83,11 +89,11 @@ function openChat(friend) {
     <div class="chat-view">
       <div class="chat-header">
         <div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
-        <span class="chat-username">${friend.username}</span>
+        <span class="chat-username">${escapeHtml(friend.username)}</span>
       </div>
       <div class="messages-list" id="messages-list"></div>
       <div class="message-input-row">
-        <input type="text" id="message-input" placeholder="Message @${friend.username}">
+        <input type="text" id="message-input" placeholder="Message @${escapeHtml(friend.username)}">
         <button id="send-btn">Send</button>
       </div>
     </div>
@@ -116,10 +122,16 @@ function renderMessages(messages) {
   if (!list) return;
   list.innerHTML = "";
   messages.forEach((msg) => {
-    const item = document.createElement("div");
-    item.className = msg.senderId === myUid ? "message-bubble mine" : "message-bubble theirs";
-    item.textContent = msg.text;
-    list.appendChild(item);
+    const row = document.createElement("div");
+    row.className = "message-row";
+    row.innerHTML = `
+      <div class="avatar-circle msg-avatar" style="background-color:${getAvatarColor(msg.senderUsername)}">${getInitial(msg.senderUsername)}</div>
+      <div class="message-content">
+        <span class="message-sender">${escapeHtml(msg.senderUsername)}</span>
+        <p class="message-text">${escapeHtml(msg.text)}</p>
+      </div>
+    `;
+    list.appendChild(row);
   });
   list.scrollTop = list.scrollHeight;
 }
