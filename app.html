@@ -16,10 +16,23 @@
 
     <div class="sidebar">
       <div class="sidebar-header">Friends</div>
-      <div class="empty-friends">
-        <p>No friends yet.</p>
-        <p class="empty-sub">Add some to get started!</p>
+
+      <div class="add-friend-box">
+        <input type="text" id="add-friend-input" placeholder="Add friend by username">
+        <button id="add-friend-btn">Add</button>
       </div>
+      <p id="add-friend-message"></p>
+
+      <div id="requests-section" class="requests-section" style="display:none;">
+        <div class="section-label">Friend Requests</div>
+        <div id="requests-list"></div>
+      </div>
+
+      <div class="section-label">All Friends</div>
+      <div id="friends-list" class="friends-list">
+        <p class="empty-sub">No friends yet. Add some above!</p>
+      </div>
+
       <div class="profile-bar">
         <div class="avatar-circle" id="my-avatar"></div>
         <div class="profile-info">
