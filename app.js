@@ -5,6 +5,7 @@ import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
 import { listenForMessages, sendMessage, toggleReaction } from './messages.js';
+import { searchGifs } from './giphy.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -15,9 +16,16 @@ let myUsername = null;
 let currentFriend = null;
 let currentMessagesUnsubscribe = null;
 let replyingTo = null;
+let gifSearchTimeout = null;
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
+
+const ICONS = {
+  smile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>`,
+  addReaction: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>`,
+  reply: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>`
+};
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -134,20 +142,23 @@ function renderReactions(msg) {
 
 function renderSingleMessage(msg) {
   const replyHtml = msg.replyTo
-    ? `<div class="reply-quote">↩ ${escapeHtml(msg.replyTo.senderUsername)}: ${escapeHtml(msg.replyTo.text)}</div>`
+    ? `<div class="reply-quote">${ICONS.reply} ${escapeHtml(msg.replyTo.senderUsername)}: ${escapeHtml(msg.replyTo.text)}</div>`
     : "";
 
   const quickHtml = QUICK_REACTIONS.map((e) => `<span class="emoji-option quick-react" data-msg-id="${msg.id}" data-emoji="${e}">${e}</span>`).join("");
 
+  const contentHtml = msg.gifUrl
+    ? `<img class="message-gif" src="${msg.gifUrl}">`
+    : `<p class="message-text">${renderTextWithMentions(msg.text)}</p>`;
+
   return `
     <div class="message-line">
       ${replyHtml}
-      <p class="message-text">${renderTextWithMentions(msg.text)}
-        <span class="message-actions">
-          <button class="react-btn" data-msg-id="${msg.id}">🙂+</button>
-          <button class="reply-btn" data-msg-id="${msg.id}" data-sender="${escapeHtml(msg.senderUsername)}" data-text="${escapeHtml(msg.text)}">↩</button>
-        </span>
-      </p>
+      ${contentHtml}
+      <span class="message-actions">
+        <button class="react-btn" data-msg-id="${msg.id}">${ICONS.addReaction}</button>
+        <button class="reply-btn" data-msg-id="${msg.id}" data-sender="${escapeHtml(msg.senderUsername)}" data-text="${escapeHtml(msg.text || (msg.gifUrl ? 'a GIF' : ''))}">${ICONS.reply}</button>
+      </span>
       <div class="quick-reactions" id="quick-${msg.id}" style="display:none;">${quickHtml}</div>
       ${renderReactions(msg)}
     </div>
@@ -206,6 +217,11 @@ function renderMessages(messages) {
 function startReply(msgId, senderUsername, text) {
   replyingTo = { messageId: msgId, senderUsername, text };
   renderReplyPreview();
+  const input = document.getElementById("message-input");
+  if (input && !input.value.startsWith("@" + senderUsername)) {
+    input.value = `@${senderUsername} ` + input.value;
+  }
+  input.focus();
 }
 
 function cancelReply() {
@@ -230,16 +246,52 @@ function renderReplyPreview() {
 }
 
 function buildEmojiPicker() {
-  const picker = document.getElementById("emoji-picker");
-  picker.innerHTML = EMOJI_LIST.map((e) => `<span class="emoji-option">${e}</span>`).join("");
-  picker.querySelectorAll(".emoji-option").forEach((el) => {
+  const grid = document.getElementById("emoji-grid");
+  grid.innerHTML = EMOJI_LIST.map((e) => `<span class="emoji-option">${e}</span>`).join("");
+  grid.querySelectorAll(".emoji-option").forEach((el) => {
     el.addEventListener("click", () => {
       const input = document.getElementById("message-input");
       input.value += el.textContent;
       input.focus();
-      picker.style.display = "none";
+      document.getElementById("picker-popup").style.display = "none";
     });
   });
+}
+
+function setupPickerTabs() {
+  document.querySelectorAll(".picker-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".picker-tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      const target = tab.dataset.tab;
+      document.getElementById("emoji-panel").style.display = target === "emoji" ? "block" : "none";
+      document.getElementById("gif-panel").style.display = target === "gif" ? "block" : "none";
+    });
+  });
+}
+
+async function runGifSearch(query) {
+  const resultsEl = document.getElementById("gif-results");
+  if (!query) { resultsEl.innerHTML = ""; return; }
+  resultsEl.innerHTML = `<p class="gif-loading">Searching...</p>`;
+  try {
+    const gifs = await searchGifs(query);
+    resultsEl.innerHTML = gifs.map((g) => `<img class="gif-thumb" src="${g.preview}" data-full="${g.full}">`).join("");
+    resultsEl.querySelectorAll(".gif-thumb").forEach((img) => {
+      img.addEventListener("click", () => sendGif(img.dataset.full));
+    });
+  } catch (err) {
+    resultsEl.innerHTML = `<p class="gif-loading">Couldn't load GIFs.</p>`;
+  }
+}
+
+function sendGif(url) {
+  if (!currentFriend) return;
+  const fsId = friendshipId(myUid, currentFriend.uid);
+  sendMessage(db, fsId, myUid, myUsername, "", replyingTo, url);
+  replyingTo = null;
+  renderReplyPreview();
+  document.getElementById("picker-popup").style.display = "none";
 }
 
 function openChat(friend) {
@@ -256,14 +308,28 @@ function openChat(friend) {
       </div>
       <div class="messages-list" id="messages-list"></div>
       <div id="reply-preview-container"></div>
-      <div class="message-input-row">
+      <div class="message-input-row" id="message-input-row">
         <button id="plus-btn" class="icon-btn" title="Add image (coming soon)">+</button>
         <div class="input-wrapper">
           <input type="text" id="message-input" placeholder="Message @${escapeHtml(friend.username)}">
-          <button id="emoji-btn" class="icon-btn emoji-toggle" title="Emoji">🙂</button>
-          <div id="emoji-picker" class="emoji-picker" style="display:none;"></div>
+          <button id="emoji-btn" class="icon-btn emoji-toggle" title="Emoji & GIFs">${ICONS.smile}</button>
         </div>
         <button id="send-btn">Send</button>
+
+        <div id="picker-popup" class="picker-popup" style="display:none;">
+          <div class="picker-tabs">
+            <button class="picker-tab active" data-tab="emoji">Emoji</button>
+            <button class="picker-tab" data-tab="gif">GIF</button>
+          </div>
+          <div id="emoji-panel" class="picker-panel">
+            <div id="emoji-grid" class="emoji-grid"></div>
+          </div>
+          <div id="gif-panel" class="picker-panel" style="display:none;">
+            <input type="text" id="gif-search-input" placeholder="Search GIFs...">
+            <div id="gif-results" class="gif-results"></div>
+            <div class="gif-credit">Powered by GIPHY</div>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -280,9 +346,17 @@ function openChat(friend) {
   });
 
   buildEmojiPicker();
+  setupPickerTabs();
+
   document.getElementById("emoji-btn").addEventListener("click", () => {
-    const picker = document.getElementById("emoji-picker");
-    picker.style.display = picker.style.display === "none" ? "grid" : "none";
+    const popup = document.getElementById("picker-popup");
+    popup.style.display = popup.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("gif-search-input").addEventListener("input", (e) => {
+    clearTimeout(gifSearchTimeout);
+    const query = e.target.value.trim();
+    gifSearchTimeout = setTimeout(() => runGifSearch(query), 400);
   });
 }
 
