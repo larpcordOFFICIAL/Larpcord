@@ -15,10 +15,7 @@ const messageBox = document.getElementById('message');
 
 document.getElementById('signup-btn').addEventListener('click', () => {
   createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
-    .then((result) => {
-      messageBox.textContent = "Account created! Welcome, " + result.user.email;
-      messageBox.style.color = "#4ade80";
-    })
+    .then(() => window.location.href = "profile-setup.html")
     .catch((error) => {
       messageBox.textContent = error.message;
       messageBox.style.color = "#f87171";
@@ -27,10 +24,7 @@ document.getElementById('signup-btn').addEventListener('click', () => {
 
 document.getElementById('login-btn').addEventListener('click', () => {
   signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
-    .then((result) => {
-      messageBox.textContent = "Welcome back, " + result.user.email;
-      messageBox.style.color = "#4ade80";
-    })
+    .then(() => window.location.href = "app.html")
     .catch((error) => {
       messageBox.textContent = error.message;
       messageBox.style.color = "#f87171";
