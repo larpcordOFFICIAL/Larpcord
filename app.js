@@ -3,7 +3,8 @@ import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/fi
 import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
-import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends } from './friends.js';
+import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
+import { listenForMessages, sendMessage } from './messages.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -11,6 +12,8 @@ const db = getFirestore(app);
 
 let myUid = null;
 let myUsername = null;
+let currentFriend = null;
+let currentMessagesUnsubscribe = null;
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
@@ -66,9 +69,59 @@ function renderFriends(friends) {
     const item = document.createElement("div");
     item.className = "friend-item";
     item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span>${friend.username}</span>`;
-    item.addEventListener("click", () => alert("Messaging is coming in the next step!"));
+    item.addEventListener("click", () => openChat(friend));
     list.appendChild(item);
   });
+}
+
+function openChat(friend) {
+  currentFriend = friend;
+  const fsId = friendshipId(myUid, friend.uid);
+
+  const mainArea = document.getElementById("main-area");
+  mainArea.innerHTML = `
+    <div class="chat-view">
+      <div class="chat-header">
+        <div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
+        <span class="chat-username">${friend.username}</span>
+      </div>
+      <div class="messages-list" id="messages-list"></div>
+      <div class="message-input-row">
+        <input type="text" id="message-input" placeholder="Message @${friend.username}">
+        <button id="send-btn">Send</button>
+      </div>
+    </div>
+  `;
+
+  if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
+  currentMessagesUnsubscribe = listenForMessages(db, fsId, renderMessages);
+
+  document.getElementById("send-btn").addEventListener("click", sendCurrentMessage);
+  document.getElementById("message-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendCurrentMessage();
+  });
+}
+
+function sendCurrentMessage() {
+  const input = document.getElementById("message-input");
+  const text = input.value;
+  if (!text.trim() || !currentFriend) return;
+  const fsId = friendshipId(myUid, currentFriend.uid);
+  sendMessage(db, fsId, myUid, myUsername, text);
+  input.value = "";
+}
+
+function renderMessages(messages) {
+  const list = document.getElementById("messages-list");
+  if (!list) return;
+  list.innerHTML = "";
+  messages.forEach((msg) => {
+    const item = document.createElement("div");
+    item.className = msg.senderId === myUid ? "message-bubble mine" : "message-bubble theirs";
+    item.textContent = msg.text;
+    list.appendChild(item);
+  });
+  list.scrollTop = list.scrollHeight;
 }
 
 document.getElementById("add-friend-btn").addEventListener("click", async () => {
