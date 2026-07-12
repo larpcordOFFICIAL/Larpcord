@@ -15,10 +15,17 @@ let myUsername = null;
 let currentFriend = null;
 let currentMessagesUnsubscribe = null;
 
+const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+  return timestamp.toDate().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 onAuthStateChanged(auth, async (user) => {
@@ -80,6 +87,68 @@ function renderFriends(friends) {
   });
 }
 
+function groupMessages(messages) {
+  const groups = [];
+  const TEN_MIN = 10 * 60 * 1000;
+
+  messages.forEach((msg) => {
+    const lastGroup = groups[groups.length - 1];
+    const msgTime = msg.createdAt ? msg.createdAt.toMillis() : Date.now();
+
+    if (lastGroup && lastGroup.senderId === msg.senderId && msgTime - lastGroup.lastTime <= TEN_MIN) {
+      lastGroup.messages.push(msg);
+      lastGroup.lastTime = msgTime;
+    } else {
+      groups.push({
+        senderId: msg.senderId,
+        senderUsername: msg.senderUsername,
+        firstTime: msg.createdAt,
+        lastTime: msgTime,
+        messages: [msg]
+      });
+    }
+  });
+
+  return groups;
+}
+
+function renderMessages(messages) {
+  const list = document.getElementById("messages-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  groupMessages(messages).forEach((group) => {
+    const row = document.createElement("div");
+    row.className = "message-row";
+
+    const textLines = group.messages.map((msg) => `<p class="message-text">${escapeHtml(msg.text)}</p>`).join("");
+
+    row.innerHTML = `
+      <div class="avatar-circle msg-avatar" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
+      <div class="message-content">
+        <span class="message-sender">${escapeHtml(group.senderUsername)}<span class="message-time">${formatTime(group.firstTime)}</span></span>
+        ${textLines}
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  list.scrollTop = list.scrollHeight;
+}
+
+function buildEmojiPicker() {
+  const picker = document.getElementById("emoji-picker");
+  picker.innerHTML = EMOJI_LIST.map((e) => `<span class="emoji-option">${e}</span>`).join("");
+  picker.querySelectorAll(".emoji-option").forEach((el) => {
+    el.addEventListener("click", () => {
+      const input = document.getElementById("message-input");
+      input.value += el.textContent;
+      input.focus();
+      picker.style.display = "none";
+    });
+  });
+}
+
 function openChat(friend) {
   currentFriend = friend;
   const fsId = friendshipId(myUid, friend.uid);
@@ -93,7 +162,12 @@ function openChat(friend) {
       </div>
       <div class="messages-list" id="messages-list"></div>
       <div class="message-input-row">
-        <input type="text" id="message-input" placeholder="Message @${escapeHtml(friend.username)}">
+        <button id="plus-btn" class="icon-btn" title="Add image (coming soon)">+</button>
+        <div class="input-wrapper">
+          <input type="text" id="message-input" placeholder="Message @${escapeHtml(friend.username)}">
+          <button id="emoji-btn" class="icon-btn emoji-toggle" title="Emoji">🙂</button>
+          <div id="emoji-picker" class="emoji-picker" style="display:none;"></div>
+        </div>
         <button id="send-btn">Send</button>
       </div>
     </div>
@@ -106,6 +180,15 @@ function openChat(friend) {
   document.getElementById("message-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") sendCurrentMessage();
   });
+  document.getElementById("plus-btn").addEventListener("click", () => {
+    alert("Image uploads are coming in a future step!");
+  });
+
+  buildEmojiPicker();
+  document.getElementById("emoji-btn").addEventListener("click", () => {
+    const picker = document.getElementById("emoji-picker");
+    picker.style.display = picker.style.display === "none" ? "grid" : "none";
+  });
 }
 
 function sendCurrentMessage() {
@@ -115,25 +198,6 @@ function sendCurrentMessage() {
   const fsId = friendshipId(myUid, currentFriend.uid);
   sendMessage(db, fsId, myUid, myUsername, text);
   input.value = "";
-}
-
-function renderMessages(messages) {
-  const list = document.getElementById("messages-list");
-  if (!list) return;
-  list.innerHTML = "";
-  messages.forEach((msg) => {
-    const row = document.createElement("div");
-    row.className = "message-row";
-    row.innerHTML = `
-      <div class="avatar-circle msg-avatar" style="background-color:${getAvatarColor(msg.senderUsername)}">${getInitial(msg.senderUsername)}</div>
-      <div class="message-content">
-        <span class="message-sender">${escapeHtml(msg.senderUsername)}</span>
-        <p class="message-text">${escapeHtml(msg.text)}</p>
-      </div>
-    `;
-    list.appendChild(row);
-  });
-  list.scrollTop = list.scrollHeight;
 }
 
 document.getElementById("add-friend-btn").addEventListener("click", async () => {
