@@ -1,0 +1,32 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { firebaseConfig } from './firebase-config.js';
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+let currentUser = null;
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) window.location.href = "login.html";
+  else currentUser = user;
+});
+
+document.getElementById("save-btn").addEventListener("click", async () => {
+  const username = document.getElementById("username").value.trim();
+  const messageBox = document.getElementById("message");
+
+  if (username.length < 2) {
+    messageBox.textContent = "Username needs to be at least 2 characters.";
+    messageBox.style.color = "#f87171";
+    return;
+  }
+
+  await setDoc(doc(db, "users", currentUser.uid), {
+    username: username,
+    createdAt: serverTimestamp()
+  });
+
+  window.location.href = "app.html";
+});
