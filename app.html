@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Larpcord</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="app-body">
+  <div class="app-container">
+
+    <div class="server-rail">
+      <div class="rail-icon rail-home" title="Larpcord">L</div>
+      <div class="rail-icon rail-add" id="rail-add-btn" title="Servers coming soon">+</div>
+    </div>
+
+    <div class="sidebar">
+      <div class="sidebar-header">Friends</div>
+      <div class="empty-friends">
+        <p>No friends yet.</p>
+        <p class="empty-sub">Add some to get started!</p>
+      </div>
+      <div class="profile-bar">
+        <div class="avatar-circle" id="my-avatar"></div>
+        <div class="profile-info">
+          <div class="profile-name" id="my-username">Loading...</div>
+          <div class="profile-status"><span class="status-dot"></span>Online</div>
+        </div>
+        <button id="logout-btn" title="Log out">⏻</button>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <div class="empty-main">
+        <div class="empty-logo">Larpcord</div>
+        <p>Add friends to start chatting</p>
+      </div>
+    </div>
+
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
