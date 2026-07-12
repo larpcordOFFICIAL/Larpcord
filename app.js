@@ -4,7 +4,7 @@ import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/12
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
-import { listenForMessages, sendMessage } from './messages.js';
+import { listenForMessages, sendMessage, toggleReaction } from './messages.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -14,13 +14,19 @@ let myUid = null;
 let myUsername = null;
 let currentFriend = null;
 let currentMessagesUnsubscribe = null;
+let replyingTo = null;
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
+const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
 
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+function renderTextWithMentions(text) {
+  return escapeHtml(text).replace(/@(\w+)/g, '<span class="mention">@$1</span>');
 }
 
 function formatTime(timestamp) {
@@ -112,6 +118,42 @@ function groupMessages(messages) {
   return groups;
 }
 
+function renderReactions(msg) {
+  const reactions = msg.reactions || {};
+  const emojis = Object.keys(reactions).filter((e) => reactions[e] && reactions[e].length > 0);
+  if (emojis.length === 0) return "";
+
+  const pills = emojis.map((emoji) => {
+    const count = reactions[emoji].length;
+    const mine = reactions[emoji].includes(myUid) ? "mine" : "";
+    return `<span class="reaction-pill ${mine}" data-msg-id="${msg.id}" data-emoji="${emoji}">${emoji} ${count}</span>`;
+  }).join("");
+
+  return `<div class="reactions-row">${pills}</div>`;
+}
+
+function renderSingleMessage(msg) {
+  const replyHtml = msg.replyTo
+    ? `<div class="reply-quote">↩ ${escapeHtml(msg.replyTo.senderUsername)}: ${escapeHtml(msg.replyTo.text)}</div>`
+    : "";
+
+  const quickHtml = QUICK_REACTIONS.map((e) => `<span class="emoji-option quick-react" data-msg-id="${msg.id}" data-emoji="${e}">${e}</span>`).join("");
+
+  return `
+    <div class="message-line">
+      ${replyHtml}
+      <p class="message-text">${renderTextWithMentions(msg.text)}
+        <span class="message-actions">
+          <button class="react-btn" data-msg-id="${msg.id}">🙂+</button>
+          <button class="reply-btn" data-msg-id="${msg.id}" data-sender="${escapeHtml(msg.senderUsername)}" data-text="${escapeHtml(msg.text)}">↩</button>
+        </span>
+      </p>
+      <div class="quick-reactions" id="quick-${msg.id}" style="display:none;">${quickHtml}</div>
+      ${renderReactions(msg)}
+    </div>
+  `;
+}
+
 function renderMessages(messages) {
   const list = document.getElementById("messages-list");
   if (!list) return;
@@ -120,20 +162,71 @@ function renderMessages(messages) {
   groupMessages(messages).forEach((group) => {
     const row = document.createElement("div");
     row.className = "message-row";
-
-    const textLines = group.messages.map((msg) => `<p class="message-text">${escapeHtml(msg.text)}</p>`).join("");
+    const linesHtml = group.messages.map((msg) => renderSingleMessage(msg)).join("");
 
     row.innerHTML = `
       <div class="avatar-circle msg-avatar" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
       <div class="message-content">
         <span class="message-sender">${escapeHtml(group.senderUsername)}<span class="message-time">${formatTime(group.firstTime)}</span></span>
-        ${textLines}
+        ${linesHtml}
       </div>
     `;
     list.appendChild(row);
   });
 
+  list.querySelectorAll(".react-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const el = document.getElementById("quick-" + btn.dataset.msgId);
+      el.style.display = el.style.display === "none" ? "flex" : "none";
+    });
+  });
+
+  list.querySelectorAll(".quick-react").forEach((el) => {
+    el.addEventListener("click", () => {
+      toggleReaction(db, friendshipId(myUid, currentFriend.uid), el.dataset.msgId, el.dataset.emoji, myUid);
+      el.parentElement.style.display = "none";
+    });
+  });
+
+  list.querySelectorAll(".reaction-pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      toggleReaction(db, friendshipId(myUid, currentFriend.uid), pill.dataset.msgId, pill.dataset.emoji, myUid);
+    });
+  });
+
+  list.querySelectorAll(".reply-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      startReply(btn.dataset.msgId, btn.dataset.sender, btn.dataset.text);
+    });
+  });
+
   list.scrollTop = list.scrollHeight;
+}
+
+function startReply(msgId, senderUsername, text) {
+  replyingTo = { messageId: msgId, senderUsername, text };
+  renderReplyPreview();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  renderReplyPreview();
+}
+
+function renderReplyPreview() {
+  const container = document.getElementById("reply-preview-container");
+  if (!container) return;
+  if (!replyingTo) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="reply-preview">
+      <span>Replying to ${escapeHtml(replyingTo.senderUsername)}: ${escapeHtml(replyingTo.text)}</span>
+      <button id="cancel-reply-btn">✕</button>
+    </div>
+  `;
+  document.getElementById("cancel-reply-btn").addEventListener("click", cancelReply);
 }
 
 function buildEmojiPicker() {
@@ -151,6 +244,7 @@ function buildEmojiPicker() {
 
 function openChat(friend) {
   currentFriend = friend;
+  replyingTo = null;
   const fsId = friendshipId(myUid, friend.uid);
 
   const mainArea = document.getElementById("main-area");
@@ -161,6 +255,7 @@ function openChat(friend) {
         <span class="chat-username">${escapeHtml(friend.username)}</span>
       </div>
       <div class="messages-list" id="messages-list"></div>
+      <div id="reply-preview-container"></div>
       <div class="message-input-row">
         <button id="plus-btn" class="icon-btn" title="Add image (coming soon)">+</button>
         <div class="input-wrapper">
@@ -196,8 +291,10 @@ function sendCurrentMessage() {
   const text = input.value;
   if (!text.trim() || !currentFriend) return;
   const fsId = friendshipId(myUid, currentFriend.uid);
-  sendMessage(db, fsId, myUid, myUsername, text);
+  sendMessage(db, fsId, myUid, myUsername, text, replyingTo);
   input.value = "";
+  replyingTo = null;
+  renderReplyPreview();
 }
 
 document.getElementById("add-friend-btn").addEventListener("click", async () => {
