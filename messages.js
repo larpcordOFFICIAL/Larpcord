@@ -10,15 +10,16 @@ export function listenForMessages(db, friendshipId, callback) {
   });
 }
 
-export async function sendMessage(db, friendshipId, senderId, senderUsername, text, replyTo = null) {
-  if (!text.trim()) return;
+export async function sendMessage(db, friendshipId, senderId, senderUsername, text, replyTo = null, gifUrl = null) {
+  if (!text.trim() && !gifUrl) return;
   const messageData = {
     text: text.trim(),
-    senderId: senderId,
-    senderUsername: senderUsername,
+    senderId,
+    senderUsername,
     createdAt: serverTimestamp(),
     reactions: {}
   };
+  if (gifUrl) messageData.gifUrl = gifUrl;
   if (replyTo) {
     messageData.replyTo = {
       messageId: replyTo.messageId,
