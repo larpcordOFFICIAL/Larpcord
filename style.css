@@ -5,7 +5,6 @@
   box-sizing: border-box;
 }
 
-/* Whole page: dark background, everything centered (welcome/login/profile-setup) */
 body {
   min-height: 100vh;
   display: flex;
@@ -27,7 +26,6 @@ body {
 
 .tagline { margin-top: 14px; font-size: 16px; color: #8a8fa3; }
 
-/* --- Sign up / log in / profile setup card --- */
 .auth-box {
   background-color: #16161c;
   border-radius: 16px;
@@ -38,13 +36,7 @@ body {
 
 .logo-small { font-size: 28px; font-weight: 800; color: #ffffff; text-align: center; }
 
-.subtitle {
-  color: #8a8fa3;
-  text-align: center;
-  margin-top: 6px;
-  margin-bottom: 20px;
-  font-size: 14px;
-}
+.subtitle { color: #8a8fa3; text-align: center; margin-top: 6px; margin-bottom: 20px; font-size: 14px; }
 
 .auth-box input {
   width: 100%;
@@ -61,15 +53,7 @@ body {
 
 .button-row { display: flex; gap: 10px; margin-top: 8px; }
 
-.button-row button {
-  flex: 1;
-  padding: 12px;
-  border-radius: 8px;
-  border: none;
-  font-weight: 700;
-  font-size: 15px;
-  cursor: pointer;
-}
+.button-row button { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; }
 
 #signup-btn, #save-btn { background-color: #0000ff; color: #ffffff; }
 
@@ -77,7 +61,6 @@ body {
 
 #message { margin-top: 14px; text-align: center; font-size: 14px; min-height: 18px; color: #ffffff; }
 
-/* --- App shell (Discord-style layout) --- */
 .app-body { display: block; padding: 0; }
 
 .app-container { display: flex; flex-wrap: wrap; height: 100vh; width: 100%; }
@@ -107,26 +90,11 @@ body {
 
 .rail-home { background-color: #0000ff; }
 
-.sidebar {
-  width: 260px;
-  background-color: #101014;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #1c1c22;
-}
+.sidebar { width: 260px; background-color: #101014; display: flex; flex-direction: column; border-right: 1px solid #1c1c22; }
 
 .sidebar-header { padding: 18px 16px 8px; font-weight: 700; color: #ffffff; }
 
-.empty-friends {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #8a8fa3;
-  text-align: center;
-  padding: 20px;
-}
+.empty-friends { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8a8fa3; text-align: center; padding: 20px; }
 
 .empty-sub { font-size: 13px; margin-top: 4px; color: #8a8fa3; }
 
@@ -146,14 +114,7 @@ body {
 
 .profile-info { flex: 1; min-width: 0; }
 
-.profile-name {
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.profile-name { color: #ffffff; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .profile-status { font-size: 12px; color: #8a8fa3; display: flex; align-items: center; gap: 5px; }
 
@@ -165,15 +126,8 @@ body {
 
 .empty-main { text-align: center; color: #8a8fa3; }
 
-.empty-logo {
-  font-size: 32px;
-  font-weight: 800;
-  color: #ffffff;
-  text-shadow: 0 0 30px rgba(0, 0, 255, 0.5);
-  margin-bottom: 10px;
-}
+.empty-logo { font-size: 32px; font-weight: 800; color: #ffffff; text-shadow: 0 0 30px rgba(0, 0, 255, 0.5); margin-bottom: 10px; }
 
-/* --- Friends list --- */
 .add-friend-box { display: flex; gap: 6px; padding: 0 12px 10px; }
 
 .add-friend-box input {
@@ -200,14 +154,7 @@ body {
 
 #add-friend-message { font-size: 12px; padding: 0 12px 10px; min-height: 14px; color: #ffffff; }
 
-.section-label {
-  padding: 10px 12px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #8a8fa3;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+.section-label { padding: 10px 12px 6px; font-size: 11px; font-weight: 700; color: #8a8fa3; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .requests-section { border-bottom: 1px solid #1c1c22; padding-bottom: 6px; }
 
@@ -251,15 +198,34 @@ body {
 
 .message-content { display: flex; flex-direction: column; }
 
-.message-sender { color: #ffffff; font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+.message-sender { color: #ffffff; font-weight: 700; font-size: 14px; }
 
-.message-text { color: #d1d3db; font-size: 14px; line-height: 1.4; word-wrap: break-word; }
+.message-time { font-size: 11px; font-weight: 400; color: #6b6f80; margin-left: 6px; }
 
-.message-input-row { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid #1c1c22; }
+.message-text { color: #d1d3db; font-size: 14px; line-height: 1.4; word-wrap: break-word; margin-top: 2px; }
 
-.message-input-row input {
-  flex: 1;
-  padding: 12px 14px;
+.message-input-row { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid #1c1c22; align-items: center; }
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background-color: #16161c;
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-wrapper { flex: 1; position: relative; display: flex; align-items: center; }
+
+.input-wrapper input {
+  width: 100%;
+  padding: 12px 44px 12px 14px;
   border-radius: 20px;
   border: 1px solid #2a2a33;
   background-color: #16161c;
@@ -267,9 +233,30 @@ body {
   font-size: 14px;
 }
 
-.message-input-row input:focus { outline: none; border-color: #0000ff; }
+.input-wrapper input:focus { outline: none; border-color: #0000ff; }
 
-.message-input-row button {
+.emoji-toggle { position: absolute; right: 4px; background: none; font-size: 18px; }
+
+.emoji-picker {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  background-color: #16161c;
+  border: 1px solid #2a2a33;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  width: 220px;
+  z-index: 10;
+}
+
+.emoji-option { font-size: 20px; cursor: pointer; text-align: center; padding: 4px; border-radius: 6px; }
+
+.emoji-option:hover { background-color: #2a2a33; }
+
+#send-btn {
   padding: 10px 18px;
   border-radius: 20px;
   border: none;
@@ -277,4 +264,5 @@ body {
   color: #ffffff;
   font-weight: 700;
   cursor: pointer;
+  flex-shrink: 0;
 }
