@@ -4,7 +4,7 @@ import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/12
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
-import { listenForMessages, sendMessage, toggleReaction } from './messages.js';
+import { listenForMessages, sendMessage, toggleReaction, markAsRead } from './messages.js';
 import { searchGifs } from './giphy.js';
 
 const app = initializeApp(firebaseConfig);
@@ -95,7 +95,10 @@ function renderFriends(friends) {
   friends.forEach((friend) => {
     const item = document.createElement("div");
     item.className = "friend-item";
-    item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span>${escapeHtml(friend.username)}</span>`;
+    const badge = friend.unreadCount > 0
+      ? `<span class="unread-badge">${friend.unreadCount > 9 ? "9+" : friend.unreadCount}</span>`
+      : "";
+    item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span class="friend-name">${escapeHtml(friend.username)}</span>${badge}`;
     item.addEventListener("click", () => openChat(friend));
     list.appendChild(item);
   });
@@ -288,7 +291,7 @@ async function runGifSearch(query) {
 function sendGif(url) {
   if (!currentFriend) return;
   const fsId = friendshipId(myUid, currentFriend.uid);
-  sendMessage(db, fsId, myUid, myUsername, "", replyingTo, url);
+  sendMessage(db, fsId, myUid, myUsername, currentFriend.uid, "", replyingTo, url);
   replyingTo = null;
   renderReplyPreview();
   document.getElementById("picker-popup").style.display = "none";
@@ -298,6 +301,7 @@ function openChat(friend) {
   currentFriend = friend;
   replyingTo = null;
   const fsId = friendshipId(myUid, friend.uid);
+  markAsRead(db, fsId, myUid);
 
   const mainArea = document.getElementById("main-area");
   mainArea.innerHTML = `
@@ -365,7 +369,7 @@ function sendCurrentMessage() {
   const text = input.value;
   if (!text.trim() || !currentFriend) return;
   const fsId = friendshipId(myUid, currentFriend.uid);
-  sendMessage(db, fsId, myUid, myUsername, text, replyingTo);
+  sendMessage(db, fsId, myUid, myUsername, currentFriend.uid, text, replyingTo);
   input.value = "";
   replyingTo = null;
   renderReplyPreview();
