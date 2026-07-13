@@ -5,8 +5,8 @@ export function listenForMessages(db, pathSegments, callback) {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 }
 
-export async function sendMessage(db, pathSegments, senderId, senderUsername, text, replyTo = null, gifUrl = null, recipientUid = null) {
-  if (!text.trim() && !gifUrl) return;
+export async function sendMessage(db, pathSegments, senderId, senderUsername, text, replyTo = null, gifUrl = null, recipientUid = null, inviteData = null) {
+  if (!text.trim() && !gifUrl && !inviteData) return;
   const messageData = {
     text: text.trim(),
     senderId,
@@ -15,6 +15,7 @@ export async function sendMessage(db, pathSegments, senderId, senderUsername, te
     reactions: {}
   };
   if (gifUrl) messageData.gifUrl = gifUrl;
+  if (inviteData) messageData.invite = inviteData;
   if (replyTo) {
     messageData.replyTo = {
       messageId: replyTo.messageId,
