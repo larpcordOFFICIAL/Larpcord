@@ -1,16 +1,11 @@
-import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
-export function listenForMessages(db, friendshipId, callback) {
-  const q = query(
-    collection(db, "friendships", friendshipId, "messages"),
-    orderBy("createdAt", "asc")
-  );
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  });
+export function listenForMessages(db, pathSegments, callback) {
+  const q = query(collection(db, ...pathSegments, "messages"), orderBy("createdAt", "asc"));
+  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 }
 
-export async function sendMessage(db, friendshipId, senderId, senderUsername, recipientUid, text, replyTo = null, gifUrl = null) {
+export async function sendMessage(db, pathSegments, senderId, senderUsername, text, replyTo = null, gifUrl = null, recipientUid = null) {
   if (!text.trim() && !gifUrl) return;
   const messageData = {
     text: text.trim(),
@@ -27,20 +22,18 @@ export async function sendMessage(db, friendshipId, senderId, senderUsername, re
       text: replyTo.text
     };
   }
-  await addDoc(collection(db, "friendships", friendshipId, "messages"), messageData);
-  await updateDoc(doc(db, "friendships", friendshipId), {
-    [`unread.${recipientUid}`]: increment(1)
-  });
+  await addDoc(collection(db, ...pathSegments, "messages"), messageData);
+  if (recipientUid) {
+    await updateDoc(doc(db, ...pathSegments), { [`unread.${recipientUid}`]: increment(1) });
+  }
 }
 
 export async function markAsRead(db, friendshipId, myUid) {
-  await updateDoc(doc(db, "friendships", friendshipId), {
-    [`unread.${myUid}`]: 0
-  });
+  await updateDoc(doc(db, "friendships", friendshipId), { [`unread.${myUid}`]: 0 });
 }
 
-export async function toggleReaction(db, friendshipId, messageId, emoji, uid) {
-  const msgRef = doc(db, "friendships", friendshipId, "messages", messageId);
+export async function toggleReaction(db, pathSegments, messageId, emoji, uid) {
+  const msgRef = doc(db, ...pathSegments, "messages", messageId);
   const snap = await getDoc(msgRef);
   const reactions = (snap.data() && snap.data().reactions) || {};
   const current = reactions[emoji] || [];
