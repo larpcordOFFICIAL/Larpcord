@@ -10,27 +10,37 @@
   <div class="app-container">
 
     <div class="server-rail">
-      <div class="rail-icon rail-home" title="Larpcord">L</div>
-      <div class="rail-icon rail-add" id="rail-add-btn" title="Servers coming soon">+</div>
+      <div class="rail-icon rail-home" id="rail-home-btn" title="Larpcord">L</div>
+      <div id="server-list"></div>
+      <div class="rail-icon rail-add" id="rail-add-btn" title="Create or Join a Server">+</div>
     </div>
 
     <div class="sidebar">
-      <div class="sidebar-header">Friends</div>
-
-      <div class="add-friend-box">
-        <input type="text" id="add-friend-input" placeholder="Add friend by username">
-        <button id="add-friend-btn">Add</button>
+      <div id="friends-view">
+        <div class="sidebar-header">Friends</div>
+        <div class="add-friend-box">
+          <input type="text" id="add-friend-input" placeholder="Add friend by username">
+          <button id="add-friend-btn">Add</button>
+        </div>
+        <p id="add-friend-message"></p>
+        <div id="requests-section" class="requests-section" style="display:none;">
+          <div class="section-label">Friend Requests</div>
+          <div id="requests-list"></div>
+        </div>
+        <div class="section-label">All Friends</div>
+        <div id="friends-list" class="friends-list">
+          <p class="empty-sub">No friends yet. Add some above!</p>
+        </div>
       </div>
-      <p id="add-friend-message"></p>
 
-      <div id="requests-section" class="requests-section" style="display:none;">
-        <div class="section-label">Friend Requests</div>
-        <div id="requests-list"></div>
-      </div>
-
-      <div class="section-label">All Friends</div>
-      <div id="friends-list" class="friends-list">
-        <p class="empty-sub">No friends yet. Add some above!</p>
+      <div id="server-view" style="display:none;">
+        <div class="sidebar-header" id="server-view-name">Server</div>
+        <div id="server-join-requests" class="requests-section" style="display:none;">
+          <div class="section-label">Join Requests</div>
+          <div id="server-join-requests-list"></div>
+        </div>
+        <div class="section-label">Channels</div>
+        <div id="channel-list" class="friends-list"></div>
       </div>
 
       <div class="profile-bar">
@@ -51,6 +61,47 @@
     </div>
 
   </div>
+
+  <div id="server-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-server-modal-btn" class="close-modal-btn">✕</button>
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-modal-tab="create">Create Server</button>
+        <button class="modal-tab" data-modal-tab="join">Join Server</button>
+      </div>
+      <div id="create-panel" class="modal-panel">
+        <input type="text" id="new-server-name" placeholder="Server name" maxlength="30">
+        <div class="button-row">
+          <button id="create-public-btn">Create Public</button>
+          <button id="create-private-btn" class="secondary">Create Private</button>
+        </div>
+      </div>
+      <div id="join-panel" class="modal-panel" style="display:none;">
+        <input type="text" id="join-server-code" placeholder="Enter server code" maxlength="6">
+        <div class="button-row">
+          <button id="join-server-btn">Join</button>
+        </div>
+      </div>
+      <p id="server-modal-message"></p>
+    </div>
+  </div>
+
+  <div id="channel-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-channel-modal-btn" class="close-modal-btn">✕</button>
+      <h3>Edit Channel</h3>
+      <input type="text" id="edit-channel-name" placeholder="Channel name" maxlength="30">
+      <label class="toggle-row" id="channel-lock-row">
+        <input type="checkbox" id="edit-channel-allow-talk">
+        Allow members to send messages here
+      </label>
+      <div class="button-row">
+        <button id="save-channel-btn">Save</button>
+        <button id="delete-channel-btn" class="danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>
