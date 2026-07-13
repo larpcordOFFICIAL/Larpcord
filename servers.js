@@ -38,6 +38,17 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
   return { id: serverRef.id, joinCode };
 }
 
+export async function createChannel(db, serverId, name, locked = false) {
+  const chRef = doc(collection(db, "servers", serverId, "channels"));
+  await setDoc(chRef, {
+    name: name.trim(),
+    type: "general",
+    locked,
+    createdAt: serverTimestamp()
+  });
+  return chRef.id;
+}
+
 export async function joinServerByCode(db, uid, username, code) {
   const q = query(collection(db, "servers"), where("joinCode", "==", code.trim().toUpperCase()));
   const snap = await getDocs(q);
@@ -95,3 +106,4 @@ export async function updateChannel(db, serverId, channelId, updates) {
 export async function deleteChannelDoc(db, serverId, channelId) {
   await deleteDoc(doc(db, "servers", serverId, "channels", channelId));
 }
+
