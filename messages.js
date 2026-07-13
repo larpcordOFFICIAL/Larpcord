@@ -1,4 +1,4 @@
-import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 export function listenForMessages(db, friendshipId, callback) {
   const q = query(
@@ -10,7 +10,7 @@ export function listenForMessages(db, friendshipId, callback) {
   });
 }
 
-export async function sendMessage(db, friendshipId, senderId, senderUsername, text, replyTo = null, gifUrl = null) {
+export async function sendMessage(db, friendshipId, senderId, senderUsername, recipientUid, text, replyTo = null, gifUrl = null) {
   if (!text.trim() && !gifUrl) return;
   const messageData = {
     text: text.trim(),
@@ -28,6 +28,15 @@ export async function sendMessage(db, friendshipId, senderId, senderUsername, te
     };
   }
   await addDoc(collection(db, "friendships", friendshipId, "messages"), messageData);
+  await updateDoc(doc(db, "friendships", friendshipId), {
+    [`unread.${recipientUid}`]: increment(1)
+  });
+}
+
+export async function markAsRead(db, friendshipId, myUid) {
+  await updateDoc(doc(db, "friendships", friendshipId), {
+    [`unread.${myUid}`]: 0
+  });
 }
 
 export async function toggleReaction(db, friendshipId, messageId, emoji, uid) {
