@@ -234,4 +234,568 @@ function renderServerJoinRequests(server, requests) {
   sorted.forEach((req) => {
     const item = document.createElement("div");
     item.className = "request-item";
-    item.innerHTML = `<span>${escapeHtml(req.username)}</span><div class="request-buttons"><button class="accept-btn">✓</button><button class="decline-btn">✕</button>
+    item.innerHTML = `<span>${escapeHtml(req.username)}</span><div class="request-buttons"><button class="accept-btn">✓</button><button class="decline-btn">✕</button></div>`;
+    item.querySelector(".accept-btn").addEventListener("click", () => approveJoinRequest(db, server.id, req.uid));
+    item.querySelector(".decline-btn").addEventListener("click", () => declineJoinRequest(db, server.id, req.uid));
+    list.appendChild(item);
+  });
+}
+
+function openChannelSettings(server, channel) {
+  editingChannel = { server, channel };
+  document.getElementById("edit-channel-name").value = channel.name;
+  const lockRow = document.getElementById("channel-lock-row");
+  const checkbox = document.getElementById("edit-channel-allow-talk");
+  if (channel.type === "general") {
+    lockRow.style.display = "flex";
+    checkbox.checked = !channel.locked;
+  } else {
+    lockRow.style.display = "none";
+  }
+  document.getElementById("channel-modal-backdrop").style.display = "flex";
+}
+
+function groupMessages(messages) {
+  const groups = [];
+  const TEN_MIN = 10 * 60 * 1000;
+
+  messages.forEach((msg) => {
+    const lastGroup = groups[groups.length - 1];
+    const msgTime = msg.createdAt ? msg.createdAt.toMillis() : Date.now();
+
+    if (lastGroup && lastGroup.senderId === msg.senderId && msgTime - lastGroup.lastTime <= TEN_MIN) {
+      lastGroup.messages.push(msg);
+      lastGroup.lastTime = msgTime;
+    } else {
+      groups.push({ senderId: msg.senderId, senderUsername: msg.senderUsername, firstTime: msg.createdAt, lastTime: msgTime, messages: [msg] });
+    }
+  });
+
+  return groups;
+}
+
+function renderReactions(msg) {
+  const reactions = msg.reactions || {};
+  const emojis = Object.keys(reactions).filter((e) => reactions[e] && reactions[e].length > 0);
+  if (emojis.length === 0) return "";
+
+  const pills = emojis.map((emoji) => {
+    const count = reactions[emoji].length;
+    const mine = reactions[emoji].includes(myUid) ? "mine" : "";
+    return `<span class="reaction-pill ${mine}" data-msg-id="${msg.id}" data-emoji="${emoji}">${emoji} ${count}</span>`;
+  }).join("");
+
+  return `<div class="reactions-row">${pills}</div>`;
+}
+
+function renderInviteCard(msg) {
+  const inv = msg.invite;
+  return `
+    <div class="invite-card" data-server-id="${inv.serverId}" data-join-code="${inv.joinCode}">
+      <div class="invite-card-name">${escapeHtml(inv.serverName)}</div>
+      <div class="invite-card-count" id="invite-count-${msg.id}">Loading players...</div>
+      <button class="invite-join-btn" data-msg-id="${msg.id}">Join Server</button>
+    </div>
+  `;
+}
+
+function renderSingleMessage(msg) {
+  const replyHtml = msg.replyTo
+    ? `<div class="reply-quote">${ICONS.reply} ${escapeHtml(msg.replyTo.senderUsername)}: ${escapeHtml(msg.replyTo.text)}</div>`
+    : "";
+
+  const quickHtml = QUICK_REACTIONS.map((e) => `<span class="emoji-option quick-react" data-msg-id="${msg.id}" data-emoji="${e}">${e}</span>`).join("");
+
+  const contentHtml = msg.invite
+    ? renderInviteCard(msg)
+    : msg.gifUrl
+    ? `<img class="message-gif" src="${msg.gifUrl}">`
+    : `<p class="message-text">${renderTextWithMentions(msg.text)}</p>`;
+
+  return `
+    <div class="message-line">
+      ${replyHtml}
+      ${contentHtml}
+      <span class="message-actions">
+        <button class="react-btn" data-msg-id="${msg.id}">${ICONS.addReaction}</button>
+        <button class="reply-btn" data-msg-id="${msg.id}" data-sender="${escapeHtml(msg.senderUsername)}" data-text="${escapeHtml(msg.text || (msg.gifUrl ? 'a GIF' : (msg.invite ? 'a server invite' : '')))}">${ICONS.reply}</button>
+      </span>
+      <div class="quick-reactions" id="quick-${msg.id}" style="display:none;">${quickHtml}</div>
+      ${renderReactions(msg)}
+    </div>
+  `;
+}
+
+function renderMessages(messages) {
+  const list = document.getElementById("messages-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  groupMessages(messages).forEach((group) => {
+    const row = document.createElement("div");
+    row.className = "message-row";
+    const linesHtml = group.messages.map((msg) => renderSingleMessage(msg)).join("");
+
+    row.innerHTML = `
+      <div class="avatar-circle msg-avatar" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
+      <div class="message-content">
+        <span class="message-sender">${escapeHtml(group.senderUsername)}<span class="message-time">${formatTime(group.firstTime)}</span></span>
+        ${linesHtml}
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  list.querySelectorAll(".react-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const el = document.getElementById("quick-" + btn.dataset.msgId);
+      el.style.display = el.style.display === "none" ? "flex" : "none";
+    });
+  });
+
+  list.querySelectorAll(".quick-react").forEach((el) => {
+    el.addEventListener("click", () => {
+      toggleReaction(db, currentChat.pathSegments, el.dataset.msgId, el.dataset.emoji, myUid);
+      el.parentElement.style.display = "none";
+    });
+  });
+
+  list.querySelectorAll(".reaction-pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      toggleReaction(db, currentChat.pathSegments, pill.dataset.msgId, pill.dataset.emoji, myUid);
+    });
+  });
+
+  list.querySelectorAll(".reply-btn").forEach((btn) => {
+    btn.addEventListener("click", () => startReply(btn.dataset.msgId, btn.dataset.sender, btn.dataset.text));
+  });
+
+  list.querySelectorAll(".invite-card").forEach(async (card) => {
+    const serverId = card.dataset.serverId;
+    const countEl = card.querySelector(".invite-card-count");
+    try {
+      const snap = await getDoc(doc(db, "servers", serverId));
+      if (snap.exists()) {
+        const n = (snap.data().members || []).length;
+        countEl.textContent = `${n} player${n === 1 ? "" : "s"}`;
+      } else {
+        countEl.textContent = "Server no longer exists";
+      }
+    } catch (err) {
+      countEl.textContent = "";
+    }
+  });
+
+  list.querySelectorAll(".invite-join-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const card = btn.closest(".invite-card");
+      const code = card.dataset.joinCode;
+      btn.disabled = true;
+      btn.textContent = "Joining...";
+      try {
+        const result = await joinServerByCode(db, myUid, myUsername, code);
+        btn.textContent = result.requested ? "Requested!" : "Joined!";
+      } catch (err) {
+        btn.textContent = "Join Server";
+        btn.disabled = false;
+        alert(err.message);
+      }
+    });
+  });
+
+  list.scrollTop = list.scrollHeight;
+}
+
+function startReply(msgId, senderUsername, text) {
+  replyingTo = { messageId: msgId, senderUsername, text };
+  renderReplyPreview();
+  const input = document.getElementById("message-input");
+  if (input && !input.value.startsWith("@" + senderUsername)) {
+    input.value = `@${senderUsername} ` + input.value;
+  }
+  if (input) input.focus();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  renderReplyPreview();
+}
+
+function renderReplyPreview() {
+  const container = document.getElementById("reply-preview-container");
+  if (!container) return;
+  if (!replyingTo) { container.innerHTML = ""; return; }
+  container.innerHTML = `
+    <div class="reply-preview">
+      <span>Replying to ${escapeHtml(replyingTo.senderUsername)}: ${escapeHtml(replyingTo.text)}</span>
+      <button id="cancel-reply-btn">✕</button>
+    </div>
+  `;
+  document.getElementById("cancel-reply-btn").addEventListener("click", cancelReply);
+}
+
+function buildEmojiPicker() {
+  const grid = document.getElementById("emoji-grid");
+  grid.innerHTML = EMOJI_LIST.map((e) => `<span class="emoji-option">${e}</span>`).join("");
+  grid.querySelectorAll(".emoji-option").forEach((el) => {
+    el.addEventListener("click", () => {
+      const input = document.getElementById("message-input");
+      input.value += el.textContent;
+      input.focus();
+      document.getElementById("picker-popup").style.display = "none";
+    });
+  });
+}
+
+function setupPickerTabs() {
+  document.querySelectorAll(".picker-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".picker-tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      const target = tab.dataset.tab;
+      document.getElementById("emoji-panel").style.display = target === "emoji" ? "block" : "none";
+      document.getElementById("gif-panel").style.display = target === "gif" ? "block" : "none";
+    });
+  });
+}
+
+async function runGifSearch(query) {
+  const resultsEl = document.getElementById("gif-results");
+  if (!query) { resultsEl.innerHTML = ""; return; }
+  resultsEl.innerHTML = `<p class="gif-loading">Searching...</p>`;
+  try {
+    const gifs = await searchGifs(query);
+    resultsEl.innerHTML = gifs.map((g) => `<img class="gif-thumb" src="${g.preview}" data-full="${g.full}">`).join("");
+    resultsEl.querySelectorAll(".gif-thumb").forEach((img) => {
+      img.addEventListener("click", () => sendGif(img.dataset.full));
+    });
+  } catch (err) {
+    resultsEl.innerHTML = `<p class="gif-loading">Couldn't load GIFs.</p>`;
+  }
+}
+
+function sendGif(url) {
+  if (!currentChat) return;
+  sendMessage(db, currentChat.pathSegments, myUid, myUsername, "", replyingTo, url, currentChat.recipientUid || null);
+  replyingTo = null;
+  renderReplyPreview();
+  document.getElementById("picker-popup").style.display = "none";
+}
+
+function renderComposerHTML(canWrite, placeholder) {
+  if (!canWrite) {
+    return `<div class="readonly-banner">🔒 Only the owner can post in this channel</div>`;
+  }
+  return `
+    <div id="reply-preview-container"></div>
+    <div class="message-input-row" id="message-input-row">
+      <button id="plus-btn" class="icon-btn" title="Add image (coming soon)">+</button>
+      <div class="input-wrapper">
+        <input type="text" id="message-input" placeholder="${placeholder}">
+        <button id="emoji-btn" class="icon-btn emoji-toggle" title="Emoji & GIFs">${ICONS.smile}</button>
+      </div>
+      <button id="send-btn">Send</button>
+      <div id="picker-popup" class="picker-popup" style="display:none;">
+        <div class="picker-tabs">
+          <button class="picker-tab active" data-tab="emoji">Emoji</button>
+          <button class="picker-tab" data-tab="gif">GIF</button>
+        </div>
+        <div id="emoji-panel" class="picker-panel">
+          <div id="emoji-grid" class="emoji-grid"></div>
+        </div>
+        <div id="gif-panel" class="picker-panel" style="display:none;">
+          <input type="text" id="gif-search-input" placeholder="Search GIFs...">
+          <div id="gif-results" class="gif-results"></div>
+          <div class="gif-credit">Powered by GIPHY</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function attachComposerListeners(canWrite) {
+  if (!canWrite) return;
+  document.getElementById("send-btn").addEventListener("click", sendCurrentMessage);
+  document.getElementById("message-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendCurrentMessage();
+  });
+  document.getElementById("plus-btn").addEventListener("click", () => {
+    alert("Image uploads are coming in a future step!");
+  });
+  buildEmojiPicker();
+  setupPickerTabs();
+  document.getElementById("emoji-btn").addEventListener("click", () => {
+    const popup = document.getElementById("picker-popup");
+    popup.style.display = popup.style.display === "none" ? "block" : "none";
+  });
+  document.getElementById("gif-search-input").addEventListener("input", (e) => {
+    clearTimeout(gifSearchTimeout);
+    const query = e.target.value.trim();
+    gifSearchTimeout = setTimeout(() => runGifSearch(query), 400);
+  });
+}
+
+function openChat(friend) {
+  replyingTo = null;
+  const fsId = friendshipId(myUid, friend.uid);
+  currentChat = { type: "dm", pathSegments: ["friendships", fsId], recipientUid: friend.uid };
+  markAsRead(db, fsId, myUid);
+
+  document.getElementById("main-area").innerHTML = `
+    <div class="chat-view">
+      <div class="chat-header">
+        <div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
+        <span class="chat-username">${escapeHtml(friend.username)}</span>
+      </div>
+      <div class="messages-list" id="messages-list"></div>
+      ${renderComposerHTML(true, `Message @${escapeHtml(friend.username)}`)}
+    </div>
+  `;
+
+  if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
+  currentMessagesUnsubscribe = listenForMessages(db, currentChat.pathSegments, renderMessages);
+  attachComposerListeners(true);
+}
+
+function openChannel(server, channel) {
+  const isOwner = server.ownerUid === myUid;
+  const canWrite = isOwner || (channel.type === "general" && !channel.locked);
+  replyingTo = null;
+  currentChat = { type: "channel", pathSegments: ["servers", server.id, "channels", channel.id], canWrite };
+
+  document.getElementById("main-area").innerHTML = `
+    <div class="chat-view">
+      <div class="chat-header">
+        <span class="chat-username">#${escapeHtml(channel.name)}</span>
+      </div>
+      <div class="messages-list" id="messages-list"></div>
+      ${renderComposerHTML(canWrite, `Message #${escapeHtml(channel.name)}`)}
+    </div>
+  `;
+
+  if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
+  currentMessagesUnsubscribe = listenForMessages(db, currentChat.pathSegments, renderMessages);
+  attachComposerListeners(canWrite);
+}
+
+function sendCurrentMessage() {
+  const input = document.getElementById("message-input");
+  const text = input.value;
+  if (!text.trim() || !currentChat) return;
+  sendMessage(db, currentChat.pathSegments, myUid, myUsername, text, replyingTo, null, currentChat.recipientUid || null);
+  input.value = "";
+  replyingTo = null;
+  renderReplyPreview();
+}
+
+function openInviteModal(server) {
+  document.getElementById("invite-server-name").textContent = server.name;
+  document.getElementById("invite-link-input").value = getJoinLinkForCode(server.joinCode);
+  document.getElementById("invite-copy-message").textContent = "";
+
+  const list = document.getElementById("invite-friends-list");
+  list.innerHTML = "";
+  if (myFriends.length === 0) {
+    list.innerHTML = `<p class="empty-sub">No friends yet to invite.</p>`;
+  } else {
+    myFriends.forEach((friend) => {
+      const item = document.createElement("div");
+      item.className = "friend-item";
+      item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span class="friend-name">${escapeHtml(friend.username)}</span><button class="invite-send-btn">Send</button>`;
+      item.querySelector(".invite-send-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        sendServerInvite(server, friend);
+        e.target.textContent = "Sent!";
+        e.target.disabled = true;
+      });
+      list.appendChild(item);
+    });
+  }
+  document.getElementById("invite-modal-backdrop").style.display = "flex";
+}
+
+function sendServerInvite(server, friend) {
+  const fsId = friendshipId(myUid, friend.uid);
+  sendMessage(db, ["friendships", fsId], myUid, myUsername, "", null, null, friend.uid, {
+    serverId: server.id,
+    serverName: server.name,
+    joinCode: server.joinCode
+  });
+}
+
+document.getElementById("add-friend-btn").addEventListener("click", async () => {
+  const input = document.getElementById("add-friend-input");
+  const targetUsername = input.value.trim();
+  const messageBox = document.getElementById("add-friend-message");
+  if (!targetUsername) return;
+
+  try {
+    await sendFriendRequest(db, myUid, myUsername, targetUsername);
+    messageBox.textContent = "Friend request sent!";
+    messageBox.style.color = "#4ade80";
+    input.value = "";
+  } catch (error) {
+    messageBox.textContent = error.message;
+    messageBox.style.color = "#f87171";
+  }
+});
+
+document.getElementById("logout-btn").addEventListener("click", () => {
+  signOut(auth).then(() => window.location.href = "login.html");
+});
+
+document.getElementById("rail-home-btn").addEventListener("click", showFriendsView);
+
+document.getElementById("rail-add-btn").addEventListener("click", () => {
+  document.getElementById("server-modal-backdrop").style.display = "flex";
+});
+document.getElementById("close-server-modal-btn").addEventListener("click", () => {
+  document.getElementById("server-modal-backdrop").style.display = "none";
+});
+
+document.querySelectorAll(".modal-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".modal-tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const target = tab.dataset.modalTab;
+    document.getElementById("create-panel").style.display = target === "create" ? "block" : "none";
+    document.getElementById("join-panel").style.display = target === "join" ? "block" : "none";
+  });
+});
+
+async function handleCreateServer(isPrivate) {
+  const nameInput = document.getElementById("new-server-name");
+  const msg = document.getElementById("server-modal-message");
+  const name = nameInput.value.trim();
+  if (name.length < 2) {
+    msg.textContent = "Server name needs to be at least 2 characters.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  const publicBtn = document.getElementById("create-public-btn");
+  const privateBtn = document.getElementById("create-private-btn");
+  publicBtn.disabled = true;
+  privateBtn.disabled = true;
+  msg.textContent = "Creating server...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const result = await createServer(db, myUid, myUsername, name, isPrivate);
+    msg.textContent = `Server created! Join code: ${result.joinCode}`;
+    msg.style.color = "#4ade80";
+    nameInput.value = "";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    publicBtn.disabled = false;
+    privateBtn.disabled = false;
+  }
+}
+document.getElementById("create-public-btn").addEventListener("click", () => handleCreateServer(false));
+document.getElementById("create-private-btn").addEventListener("click", () => handleCreateServer(true));
+
+document.getElementById("join-server-btn").addEventListener("click", async () => {
+  const codeInput = document.getElementById("join-server-code");
+  const msg = document.getElementById("server-modal-message");
+  const code = codeInput.value.trim();
+  if (!code) return;
+  const joinBtn = document.getElementById("join-server-btn");
+  joinBtn.disabled = true;
+  msg.textContent = "Joining...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const result = await joinServerByCode(db, myUid, myUsername, code);
+    msg.textContent = result.requested
+      ? `Request sent to join "${result.serverName}"! Waiting for approval.`
+      : `Joined "${result.serverName}"!`;
+    msg.style.color = "#4ade80";
+    codeInput.value = "";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    joinBtn.disabled = false;
+  }
+});
+
+document.getElementById("close-channel-modal-btn").addEventListener("click", () => {
+  document.getElementById("channel-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("save-channel-btn").addEventListener("click", async () => {
+  if (!editingChannel) return;
+  const newName = document.getElementById("edit-channel-name").value.trim();
+  const checkbox = document.getElementById("edit-channel-allow-talk");
+  const updates = {};
+  if (newName) updates.name = newName;
+  if (editingChannel.channel.type === "general") updates.locked = !checkbox.checked;
+  await updateChannel(db, editingChannel.server.id, editingChannel.channel.id, updates);
+  document.getElementById("channel-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("delete-channel-btn").addEventListener("click", async () => {
+  if (!editingChannel) return;
+  if (!confirm(`Delete #${editingChannel.channel.name}? This can't be undone.`)) return;
+  await deleteChannelDoc(db, editingChannel.server.id, editingChannel.channel.id);
+  document.getElementById("channel-modal-backdrop").style.display = "none";
+  document.getElementById("main-area").innerHTML = `<div class="empty-main"><p>Channel deleted.</p></div>`;
+  currentChat = null;
+});
+
+document.getElementById("add-channel-btn").addEventListener("click", () => {
+  document.getElementById("new-channel-name").value = "";
+  document.getElementById("new-channel-locked").checked = false;
+  document.getElementById("new-channel-message").textContent = "";
+  document.getElementById("new-channel-modal-backdrop").style.display = "flex";
+});
+
+document.getElementById("close-new-channel-modal-btn").addEventListener("click", () => {
+  document.getElementById("new-channel-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("create-channel-btn").addEventListener("click", async () => {
+  if (!currentServer) return;
+  const name = document.getElementById("new-channel-name").value.trim();
+  const msg = document.getElementById("new-channel-message");
+  if (name.length < 2) {
+    msg.textContent = "Channel name needs to be at least 2 characters.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  const locked = document.getElementById("new-channel-locked").checked;
+  const createBtn = document.getElementById("create-channel-btn");
+  createBtn.disabled = true;
+  msg.textContent = "Creating...";
+  msg.style.color = "#8a8fa3";
+  try {
+    await createChannel(db, currentServer.id, name, locked);
+    document.getElementById("new-channel-modal-backdrop").style.display = "none";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    createBtn.disabled = false;
+  }
+});
+
+document.getElementById("server-invite-btn").addEventListener("click", () => {
+  if (!currentServer) return;
+  openInviteModal(currentServer);
+});
+
+document.getElementById("close-invite-modal-btn").addEventListener("click", () => {
+  document.getElementById("invite-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("copy-invite-link-btn").addEventListener("click", async () => {
+  const input = document.getElementById("invite-link-input");
+  input.select();
+  try {
+    await navigator.clipboard.writeText(input.value);
+    document.getElementById("invite-copy-message").textContent = "Link copied!";
+    document.getElementById("invite-copy-message").style.color = "#4ade80";
+  } catch (err) {
+    document.getElementById("invite-copy-message").textContent = "Couldn't copy — long-press the link box to copy manually.";
+    document.getElementById("invite-copy-message").style.color = "#f87171";
+  }
+});
