@@ -1,10 +1,16 @@
 import { collection, doc, setDoc, deleteDoc, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
+const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
+
 function randomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
+}
+
+function randomBannerColor() {
+  return BANNER_COLORS[Math.floor(Math.random() * BANNER_COLORS.length)];
 }
 
 export async function createServer(db, ownerUid, ownerUsername, name, isPrivate) {
@@ -16,6 +22,7 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
     ownerUid,
     isPrivate,
     joinCode,
+    bannerColor: randomBannerColor(),
     members: [ownerUid],
     createdAt: serverTimestamp()
   });
@@ -47,6 +54,10 @@ export async function createChannel(db, serverId, name, locked = false) {
     createdAt: serverTimestamp()
   });
   return chRef.id;
+}
+
+export async function updateServerSettings(db, serverId, updates) {
+  await updateDoc(doc(db, "servers", serverId), updates);
 }
 
 export async function joinServerByCode(db, uid, username, code) {
@@ -106,4 +117,3 @@ export async function updateChannel(db, serverId, channelId, updates) {
 export async function deleteChannelDoc(db, serverId, channelId) {
   await deleteDoc(doc(db, "servers", serverId, "channels", channelId));
 }
-
