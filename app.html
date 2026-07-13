@@ -34,13 +34,15 @@
       </div>
 
       <div id="server-view" style="display:none;">
+        <div id="server-banner" class="server-banner"></div>
         <div class="server-header">
           <div class="server-header-icon" id="server-header-icon"></div>
           <div class="server-header-info">
             <div class="server-header-name" id="server-view-name">Server</div>
             <div class="server-header-count" id="server-view-count"></div>
           </div>
-          <button class="icon-btn server-invite-btn" id="server-invite-btn" title="Invite people">🔗</button>
+          <button class="icon-btn" id="server-invite-btn" title="Invite people"></button>
+          <button class="icon-btn" id="server-settings-btn" title="Server settings" style="display:none;"></button>
         </div>
         <div id="server-join-requests" class="requests-section" style="display:none;">
           <div class="section-label">Join Requests</div>
@@ -54,12 +56,13 @@
       </div>
 
       <div class="profile-bar">
-        <div class="avatar-circle" id="my-avatar"></div>
+        <div class="avatar-circle" id="my-avatar" title="View profile"></div>
         <div class="profile-info">
           <div class="profile-name" id="my-username">Loading...</div>
           <div class="profile-status"><span class="status-dot"></span>Online</div>
         </div>
-        <button id="logout-btn" title="Log out">⏻</button>
+        <button id="my-profile-settings-btn" class="icon-btn" title="Edit profile"></button>
+        <button id="logout-btn" title="Log out"></button>
       </div>
     </div>
 
@@ -139,6 +142,64 @@
       <p id="invite-copy-message"></p>
       <div class="section-label">Send to a friend</div>
       <div id="invite-friends-list" class="friends-list invite-friends-list"></div>
+    </div>
+  </div>
+
+  <div id="server-settings-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-server-settings-btn" class="close-modal-btn">✕</button>
+      <h3>Server Settings</h3>
+      <input type="text" id="server-settings-name" placeholder="Server name" maxlength="30">
+      <label class="toggle-row">
+        <input type="checkbox" id="server-settings-private">
+        Private (requires approval to join)
+      </label>
+      <div class="section-label">Banner Color</div>
+      <div class="color-swatch-row" id="server-banner-swatches"></div>
+      <button id="server-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+      <div class="button-row">
+        <button id="save-server-settings-btn">Save</button>
+      </div>
+      <p id="server-settings-message"></p>
+    </div>
+  </div>
+
+  <div id="profile-edit-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-profile-edit-btn" class="close-modal-btn">✕</button>
+      <h3>Edit Profile</h3>
+      <textarea id="profile-edit-bio" placeholder="Write a short bio..." maxlength="150" rows="3"></textarea>
+      <select id="profile-edit-gender">
+        <option value="">Prefer not to say</option>
+        <option value="Woman">Woman</option>
+        <option value="Man">Man</option>
+        <option value="Non-binary">Non-binary</option>
+        <option value="Other">Other</option>
+      </select>
+      <div class="section-label">Banner Color</div>
+      <div class="color-swatch-row" id="profile-banner-swatches"></div>
+      <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+      <div class="button-row">
+        <button id="save-profile-btn">Save</button>
+      </div>
+      <p id="profile-edit-message"></p>
+    </div>
+  </div>
+
+  <div id="profile-view-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card profile-view-card">
+      <button id="close-profile-view-btn" class="close-modal-btn">✕</button>
+      <div class="profile-view-banner" id="profile-view-banner"></div>
+      <div class="profile-view-avatar" id="profile-view-avatar"></div>
+      <div class="profile-view-username" id="profile-view-username"></div>
+      <div class="profile-view-field">
+        <span class="profile-view-label">Bio</span>
+        <p id="profile-view-bio" class="profile-view-value"></p>
+      </div>
+      <div class="profile-view-field">
+        <span class="profile-view-label">Gender</span>
+        <p id="profile-view-gender" class="profile-view-value"></p>
+      </div>
     </div>
   </div>
 
