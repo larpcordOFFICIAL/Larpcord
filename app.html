@@ -34,12 +34,22 @@
       </div>
 
       <div id="server-view" style="display:none;">
-        <div class="sidebar-header" id="server-view-name">Server</div>
+        <div class="server-header">
+          <div class="server-header-icon" id="server-header-icon"></div>
+          <div class="server-header-info">
+            <div class="server-header-name" id="server-view-name">Server</div>
+            <div class="server-header-count" id="server-view-count"></div>
+          </div>
+          <button class="icon-btn server-invite-btn" id="server-invite-btn" title="Invite people">🔗</button>
+        </div>
         <div id="server-join-requests" class="requests-section" style="display:none;">
           <div class="section-label">Join Requests</div>
           <div id="server-join-requests-list"></div>
         </div>
-        <div class="section-label">Channels</div>
+        <div class="section-label-row">
+          <div class="section-label">Channels</div>
+          <button class="add-channel-btn" id="add-channel-btn" style="display:none;" title="Add channel">+</button>
+        </div>
         <div id="channel-list" class="friends-list"></div>
       </div>
 
@@ -99,6 +109,36 @@
         <button id="save-channel-btn">Save</button>
         <button id="delete-channel-btn" class="danger">Delete</button>
       </div>
+    </div>
+  </div>
+
+  <div id="new-channel-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-new-channel-modal-btn" class="close-modal-btn">✕</button>
+      <h3>New Channel</h3>
+      <input type="text" id="new-channel-name" placeholder="Channel name" maxlength="30">
+      <label class="toggle-row">
+        <input type="checkbox" id="new-channel-locked">
+        Start locked (only you can post)
+      </label>
+      <div class="button-row">
+        <button id="create-channel-btn">Create</button>
+      </div>
+      <p id="new-channel-message"></p>
+    </div>
+  </div>
+
+  <div id="invite-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-invite-modal-btn" class="close-modal-btn">✕</button>
+      <h3>Invite to <span id="invite-server-name"></span></h3>
+      <div class="invite-link-row">
+        <input type="text" id="invite-link-input" readonly>
+        <button id="copy-invite-link-btn">Copy</button>
+      </div>
+      <p id="invite-copy-message"></p>
+      <div class="section-label">Send to a friend</div>
+      <div id="invite-friends-list" class="friends-list invite-friends-list"></div>
     </div>
   </div>
 
