@@ -1,12 +1,12 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
-import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
 import { listenForMessages, sendMessage, toggleReaction, markAsRead } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings } from './servers.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -14,6 +14,7 @@ const db = getFirestore(app);
 
 let myUid = null;
 let myUsername = null;
+let myProfile = {};
 let myFriends = [];
 let currentChat = null;
 let currentServer = null;
@@ -23,15 +24,21 @@ let currentChannelsUnsubscribe = null;
 let currentJoinRequestsUnsubscribe = null;
 let replyingTo = null;
 let gifSearchTimeout = null;
+let selectedServerBannerColor = null;
+let selectedProfileBannerColor = null;
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
+const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
 
 const ICONS = {
   smile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>`,
   addReaction: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>`,
   reply: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>`,
-  gear: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
+  gear: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
+  share: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>`,
+  lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
+  power: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`
 };
 
 function escapeHtml(str) {
@@ -53,6 +60,18 @@ function getJoinLinkForCode(code) {
   return `${window.location.origin}${window.location.pathname}?join=${code}`;
 }
 
+function randomBannerColor() {
+  return BANNER_COLORS[Math.floor(Math.random() * BANNER_COLORS.length)];
+}
+
+function applyStaticIcons() {
+  document.getElementById("server-invite-btn").innerHTML = ICONS.share;
+  document.getElementById("server-settings-btn").innerHTML = ICONS.gear;
+  document.getElementById("my-profile-settings-btn").innerHTML = ICONS.gear;
+  document.getElementById("logout-btn").innerHTML = ICONS.power;
+}
+applyStaticIcons();
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -63,6 +82,7 @@ onAuthStateChanged(auth, async (user) => {
   const userDoc = await getDoc(doc(db, "users", user.uid));
   const data = userDoc.exists() ? userDoc.data() : {};
   myUsername = data.username || user.email;
+  myProfile = data;
 
   document.getElementById("my-username").textContent = myUsername;
   const avatarEl = document.getElementById("my-avatar");
@@ -123,6 +143,10 @@ function renderFriends(friends) {
       ? `<span class="unread-badge">${friend.unreadCount > 9 ? "9+" : friend.unreadCount}</span>`
       : "";
     item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span class="friend-name">${escapeHtml(friend.username)}</span>${badge}`;
+    item.querySelector(".avatar-circle").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openProfileView(friend.uid, friend.username);
+    });
     item.addEventListener("click", () => openChat(friend));
     list.appendChild(item);
   });
@@ -141,13 +165,15 @@ function renderServerRail(servers) {
   });
 }
 
-function renderServerHeader(server) {
+function renderServerHeader(server, isOwner) {
   const iconEl = document.getElementById("server-header-icon");
   iconEl.textContent = getInitial(server.name);
   iconEl.style.backgroundColor = getAvatarColor(server.name);
   document.getElementById("server-view-name").textContent = server.name;
   const count = server.members ? server.members.length : 1;
   document.getElementById("server-view-count").textContent = `${count} player${count === 1 ? "" : "s"}`;
+  document.getElementById("server-banner").style.backgroundColor = server.bannerColor || "#0000ff";
+  document.getElementById("server-settings-btn").style.display = isOwner ? "flex" : "none";
 }
 
 function selectServer(server) {
@@ -156,7 +182,7 @@ function selectServer(server) {
   document.getElementById("server-view").style.display = "block";
 
   const isOwner = server.ownerUid === myUid;
-  renderServerHeader(server);
+  renderServerHeader(server, isOwner);
   document.getElementById("add-channel-btn").style.display = isOwner ? "flex" : "none";
 
   if (currentChannelsUnsubscribe) currentChannelsUnsubscribe();
@@ -484,7 +510,7 @@ function sendGif(url) {
 
 function renderComposerHTML(canWrite, placeholder) {
   if (!canWrite) {
-    return `<div class="readonly-banner">🔒 Only the owner can post in this channel</div>`;
+    return `<div class="readonly-banner">${ICONS.lock} Only the owner can post in this channel</div>`;
   }
   return `
     <div id="reply-preview-container"></div>
@@ -544,13 +570,16 @@ function openChat(friend) {
   document.getElementById("main-area").innerHTML = `
     <div class="chat-view">
       <div class="chat-header">
-        <div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
-        <span class="chat-username">${escapeHtml(friend.username)}</span>
+        <div class="avatar-circle small-avatar clickable-profile" id="chat-header-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
+        <span class="chat-username clickable-profile" id="chat-header-username">${escapeHtml(friend.username)}</span>
       </div>
       <div class="messages-list" id="messages-list"></div>
       ${renderComposerHTML(true, `Message @${escapeHtml(friend.username)}`)}
     </div>
   `;
+
+  document.getElementById("chat-header-avatar").addEventListener("click", () => openProfileView(friend.uid, friend.username));
+  document.getElementById("chat-header-username").addEventListener("click", () => openProfileView(friend.uid, friend.username));
 
   if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
   currentMessagesUnsubscribe = listenForMessages(db, currentChat.pathSegments, renderMessages);
@@ -622,6 +651,47 @@ function sendServerInvite(server, friend) {
     joinCode: server.joinCode
   });
 }
+
+function buildColorSwatches(containerId, selectedColor, onSelect) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = BANNER_COLORS.map((c) =>
+    `<button type="button" class="color-swatch ${c === selectedColor ? "selected" : ""}" data-color="${c}" style="background-color:${c};"></button>`
+  ).join("");
+  container.querySelectorAll(".color-swatch").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      container.querySelectorAll(".color-swatch").forEach((b) => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      onSelect(btn.dataset.color);
+    });
+  });
+}
+
+async function openProfileView(uid, fallbackUsername) {
+  const modal = document.getElementById("profile-view-modal-backdrop");
+  document.getElementById("profile-view-username").textContent = fallbackUsername;
+  document.getElementById("profile-view-avatar").textContent = getInitial(fallbackUsername);
+  document.getElementById("profile-view-avatar").style.backgroundColor = getAvatarColor(fallbackUsername);
+  document.getElementById("profile-view-banner").style.backgroundColor = "#2a2a33";
+  document.getElementById("profile-view-bio").textContent = "Loading...";
+  document.getElementById("profile-view-gender").textContent = "Loading...";
+  modal.style.display = "flex";
+
+  try {
+    const data = uid === myUid ? myProfile : (await getDoc(doc(db, "users", uid))).data() || {};
+    document.getElementById("profile-view-banner").style.backgroundColor = data.bannerColor || "#0000ff";
+    document.getElementById("profile-view-bio").textContent = data.bio && data.bio.trim() ? data.bio : "No bio yet.";
+    document.getElementById("profile-view-gender").textContent = data.gender && data.gender.trim() ? data.gender : "Not specified";
+  } catch (err) {
+    document.getElementById("profile-view-bio").textContent = "Couldn't load profile.";
+    document.getElementById("profile-view-gender").textContent = "";
+  }
+}
+
+document.getElementById("close-profile-view-btn").addEventListener("click", () => {
+  document.getElementById("profile-view-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("my-avatar").addEventListener("click", () => openProfileView(myUid, myUsername));
 
 document.getElementById("add-friend-btn").addEventListener("click", async () => {
   const input = document.getElementById("add-friend-input");
@@ -797,5 +867,89 @@ document.getElementById("copy-invite-link-btn").addEventListener("click", async 
   } catch (err) {
     document.getElementById("invite-copy-message").textContent = "Couldn't copy — long-press the link box to copy manually.";
     document.getElementById("invite-copy-message").style.color = "#f87171";
+  }
+});
+
+document.getElementById("server-settings-btn").addEventListener("click", () => {
+  if (!currentServer) return;
+  document.getElementById("server-settings-name").value = currentServer.name;
+  document.getElementById("server-settings-private").checked = !!currentServer.isPrivate;
+  selectedServerBannerColor = currentServer.bannerColor || "#0000ff";
+  buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
+  document.getElementById("server-settings-message").textContent = "";
+  document.getElementById("server-settings-modal-backdrop").style.display = "flex";
+});
+
+document.getElementById("close-server-settings-btn").addEventListener("click", () => {
+  document.getElementById("server-settings-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("server-banner-random-btn").addEventListener("click", () => {
+  selectedServerBannerColor = randomBannerColor();
+  buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
+});
+
+document.getElementById("save-server-settings-btn").addEventListener("click", async () => {
+  if (!currentServer) return;
+  const name = document.getElementById("server-settings-name").value.trim();
+  const msg = document.getElementById("server-settings-message");
+  if (name.length < 2) {
+    msg.textContent = "Server name needs to be at least 2 characters.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  const isPrivate = document.getElementById("server-settings-private").checked;
+  const saveBtn = document.getElementById("save-server-settings-btn");
+  saveBtn.disabled = true;
+  msg.textContent = "Saving...";
+  msg.style.color = "#8a8fa3";
+  try {
+    await updateServerSettings(db, currentServer.id, { name, isPrivate, bannerColor: selectedServerBannerColor });
+    currentServer = { ...currentServer, name, isPrivate, bannerColor: selectedServerBannerColor };
+    renderServerHeader(currentServer, true);
+    document.getElementById("server-settings-modal-backdrop").style.display = "none";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+document.getElementById("my-profile-settings-btn").addEventListener("click", () => {
+  document.getElementById("profile-edit-bio").value = myProfile.bio || "";
+  document.getElementById("profile-edit-gender").value = myProfile.gender || "";
+  selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
+  buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
+  document.getElementById("profile-edit-message").textContent = "";
+  document.getElementById("profile-edit-modal-backdrop").style.display = "flex";
+});
+
+document.getElementById("close-profile-edit-btn").addEventListener("click", () => {
+  document.getElementById("profile-edit-modal-backdrop").style.display = "none";
+});
+
+document.getElementById("profile-banner-random-btn").addEventListener("click", () => {
+  selectedProfileBannerColor = randomBannerColor();
+  buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
+});
+
+document.getElementById("save-profile-btn").addEventListener("click", async () => {
+  const bio = document.getElementById("profile-edit-bio").value.trim();
+  const gender = document.getElementById("profile-edit-gender").value;
+  const msg = document.getElementById("profile-edit-message");
+  const saveBtn = document.getElementById("save-profile-btn");
+  saveBtn.disabled = true;
+  msg.textContent = "Saving...";
+  msg.style.color = "#8a8fa3";
+  try {
+    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor });
+    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor };
+    document.getElementById("profile-edit-modal-backdrop").style.display = "none";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    saveBtn.disabled = false;
   }
 });
