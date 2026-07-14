@@ -5,7 +5,7 @@ export function listenForMessages(db, pathSegments, callback) {
   return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 }
 
-export async function sendMessage(db, pathSegments, senderId, senderUsername, text, replyTo = null, gifUrl = null, recipientUid = null, inviteData = null) {
+export async function sendMessage(db, pathSegments, senderId, senderUsername, text, replyTo = null, gifUrl = null, recipientUid = null, inviteData = null, channelMeta = null) {
   if (!text.trim() && !gifUrl && !inviteData) return;
   const messageData = {
     text: text.trim(),
@@ -24,8 +24,26 @@ export async function sendMessage(db, pathSegments, senderId, senderUsername, te
     };
   }
   await addDoc(collection(db, ...pathSegments, "messages"), messageData);
+
   if (recipientUid) {
     await updateDoc(doc(db, ...pathSegments), { [`unread.${recipientUid}`]: increment(1) });
+  }
+
+  if (channelMeta) {
+    const channelRef = doc(db, "servers", channelMeta.serverId, "channels", channelMeta.channelId);
+    await updateDoc(channelRef, { lastMessageAt: serverTimestamp() });
+
+    if (channelMeta.members && text.trim()) {
+      const mentioned = channelMeta.members.filter((m) =>
+        m.uid !== senderId && m.username && new RegExp(`@${m.username}\\b`, "i").test(text)
+      );
+      if (mentioned.length > 0) {
+        const serverRef = doc(db, "servers", channelMeta.serverId);
+        const updates = {};
+        mentioned.forEach((m) => { updates[`mentions.${m.uid}`] = increment(1); });
+        await updateDoc(serverRef, updates);
+      }
+    }
   }
 }
 
