@@ -1,3 +1,4 @@
+
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
@@ -6,7 +7,7 @@ import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
 import { listenForMessages, sendMessage, toggleReaction, markAsRead } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions } from './servers.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -64,11 +65,21 @@ function randomBannerColor() {
   return BANNER_COLORS[Math.floor(Math.random() * BANNER_COLORS.length)];
 }
 
+function on(id, event, handler) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(event, handler);
+}
+
+function setIcon(id, svg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = svg;
+}
+
 function applyStaticIcons() {
-  document.getElementById("server-invite-btn").innerHTML = ICONS.share;
-  document.getElementById("server-settings-btn").innerHTML = ICONS.gear;
-  document.getElementById("my-profile-settings-btn").innerHTML = ICONS.gear;
-  document.getElementById("logout-btn").innerHTML = ICONS.power;
+  setIcon("server-invite-btn", ICONS.share);
+  setIcon("server-settings-btn", ICONS.gear);
+  setIcon("my-profile-settings-btn", ICONS.gear);
+  setIcon("logout-btn", ICONS.power);
 }
 applyStaticIcons();
 
@@ -156,12 +167,25 @@ function renderServerRail(servers) {
   const rail = document.getElementById("server-list");
   rail.innerHTML = "";
   servers.forEach((server) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "rail-icon-wrapper";
+
     const icon = document.createElement("div");
     icon.className = "rail-icon server-icon";
     icon.textContent = getInitial(server.name);
     icon.title = server.name;
     icon.addEventListener("click", () => selectServer(server));
-    rail.appendChild(icon);
+    wrapper.appendChild(icon);
+
+    const mentionCount = (server.mentions && server.mentions[myUid]) || 0;
+    if (mentionCount > 0) {
+      const badge = document.createElement("span");
+      badge.className = "rail-badge";
+      badge.textContent = mentionCount > 9 ? "9+" : mentionCount;
+      wrapper.appendChild(badge);
+    }
+
+    rail.appendChild(wrapper);
   });
 }
 
@@ -184,6 +208,10 @@ function selectServer(server) {
   const isOwner = server.ownerUid === myUid;
   renderServerHeader(server, isOwner);
   document.getElementById("add-channel-btn").style.display = isOwner ? "flex" : "none";
+
+  if ((server.mentions && server.mentions[myUid]) > 0) {
+    clearServerMentions(db, server.id, myUid);
+  }
 
   if (currentChannelsUnsubscribe) currentChannelsUnsubscribe();
   currentChannelsUnsubscribe = listenForChannels(db, server.id, (channels) => renderChannelList(server, channels, isOwner));
@@ -229,7 +257,12 @@ function renderChannelList(server, channels, isOwner) {
     const item = document.createElement("div");
     item.className = "channel-item";
     const gearHtml = isOwner ? `<button class="channel-gear-btn">${ICONS.gear}</button>` : "";
-    item.innerHTML = `<span class="channel-hash">#</span><span class="channel-name-text">${escapeHtml(ch.name)}</span>${gearHtml}`;
+
+    const lastMsg = ch.lastMessageAt ? ch.lastMessageAt.toMillis() : 0;
+    const lastRead = (ch.lastRead && ch.lastRead[myUid]) ? ch.lastRead[myUid].toMillis() : 0;
+    const unreadDot = lastMsg > lastRead ? `<span class="channel-dot"></span>` : "";
+
+    item.innerHTML = `<span class="channel-hash">#</span><span class="channel-name-text">${escapeHtml(ch.name)}</span>${unreadDot}${gearHtml}`;
     item.querySelector(".channel-name-text").addEventListener("click", () => openChannel(server, ch));
     item.querySelector(".channel-hash").addEventListener("click", () => openChannel(server, ch));
     const gearBtn = item.querySelector(".channel-gear-btn");
@@ -261,7 +294,7 @@ function renderServerJoinRequests(server, requests) {
     const item = document.createElement("div");
     item.className = "request-item";
     item.innerHTML = `<span>${escapeHtml(req.username)}</span><div class="request-buttons"><button class="accept-btn">✓</button><button class="decline-btn">✕</button></div>`;
-    item.querySelector(".accept-btn").addEventListener("click", () => approveJoinRequest(db, server.id, req.uid));
+    item.querySelector(".accept-btn").addEventListener("click", () => approveJoinRequest(db, server.id, req.uid, req.username));
     item.querySelector(".decline-btn").addEventListener("click", () => declineJoinRequest(db, server.id, req.uid));
     list.appendChild(item);
   });
@@ -590,7 +623,9 @@ function openChannel(server, channel) {
   const isOwner = server.ownerUid === myUid;
   const canWrite = isOwner || (channel.type === "general" && !channel.locked);
   replyingTo = null;
-  currentChat = { type: "channel", pathSegments: ["servers", server.id, "channels", channel.id], canWrite };
+  currentChat = { type: "channel", pathSegments: ["servers", server.id, "channels", channel.id], canWrite, serverId: server.id, channelId: channel.id };
+
+  markChannelRead(db, server.id, channel.id, myUid);
 
   document.getElementById("main-area").innerHTML = `
     <div class="chat-view">
@@ -611,7 +646,14 @@ function sendCurrentMessage() {
   const input = document.getElementById("message-input");
   const text = input.value;
   if (!text.trim() || !currentChat) return;
-  sendMessage(db, currentChat.pathSegments, myUid, myUsername, text, replyingTo, null, currentChat.recipientUid || null);
+
+  let channelMeta = null;
+  if (currentChat.type === "channel" && currentServer) {
+    const members = Object.entries(currentServer.memberUsernames || {}).map(([uid, username]) => ({ uid, username }));
+    channelMeta = { serverId: currentChat.serverId, channelId: currentChat.channelId, members };
+  }
+
+  sendMessage(db, currentChat.pathSegments, myUid, myUsername, text, replyingTo, null, currentChat.recipientUid || null, null, channelMeta);
   input.value = "";
   replyingTo = null;
   renderReplyPreview();
@@ -687,13 +729,13 @@ async function openProfileView(uid, fallbackUsername) {
   }
 }
 
-document.getElementById("close-profile-view-btn").addEventListener("click", () => {
+on("close-profile-view-btn", "click", () => {
   document.getElementById("profile-view-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("my-avatar").addEventListener("click", () => openProfileView(myUid, myUsername));
+on("my-avatar", "click", () => openProfileView(myUid, myUsername));
 
-document.getElementById("add-friend-btn").addEventListener("click", async () => {
+on("add-friend-btn", "click", async () => {
   const input = document.getElementById("add-friend-input");
   const targetUsername = input.value.trim();
   const messageBox = document.getElementById("add-friend-message");
@@ -710,16 +752,16 @@ document.getElementById("add-friend-btn").addEventListener("click", async () => 
   }
 });
 
-document.getElementById("logout-btn").addEventListener("click", () => {
+on("logout-btn", "click", () => {
   signOut(auth).then(() => window.location.href = "login.html");
 });
 
-document.getElementById("rail-home-btn").addEventListener("click", showFriendsView);
+on("rail-home-btn", "click", showFriendsView);
 
-document.getElementById("rail-add-btn").addEventListener("click", () => {
+on("rail-add-btn", "click", () => {
   document.getElementById("server-modal-backdrop").style.display = "flex";
 });
-document.getElementById("close-server-modal-btn").addEventListener("click", () => {
+on("close-server-modal-btn", "click", () => {
   document.getElementById("server-modal-backdrop").style.display = "none";
 });
 
@@ -761,10 +803,10 @@ async function handleCreateServer(isPrivate) {
     privateBtn.disabled = false;
   }
 }
-document.getElementById("create-public-btn").addEventListener("click", () => handleCreateServer(false));
-document.getElementById("create-private-btn").addEventListener("click", () => handleCreateServer(true));
+on("create-public-btn", "click", () => handleCreateServer(false));
+on("create-private-btn", "click", () => handleCreateServer(true));
 
-document.getElementById("join-server-btn").addEventListener("click", async () => {
+on("join-server-btn", "click", async () => {
   const codeInput = document.getElementById("join-server-code");
   const msg = document.getElementById("server-modal-message");
   const code = codeInput.value.trim();
@@ -788,11 +830,11 @@ document.getElementById("join-server-btn").addEventListener("click", async () =>
   }
 });
 
-document.getElementById("close-channel-modal-btn").addEventListener("click", () => {
+on("close-channel-modal-btn", "click", () => {
   document.getElementById("channel-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("save-channel-btn").addEventListener("click", async () => {
+on("save-channel-btn", "click", async () => {
   if (!editingChannel) return;
   const newName = document.getElementById("edit-channel-name").value.trim();
   const checkbox = document.getElementById("edit-channel-allow-talk");
@@ -803,7 +845,7 @@ document.getElementById("save-channel-btn").addEventListener("click", async () =
   document.getElementById("channel-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("delete-channel-btn").addEventListener("click", async () => {
+on("delete-channel-btn", "click", async () => {
   if (!editingChannel) return;
   if (!confirm(`Delete #${editingChannel.channel.name}? This can't be undone.`)) return;
   await deleteChannelDoc(db, editingChannel.server.id, editingChannel.channel.id);
@@ -812,18 +854,18 @@ document.getElementById("delete-channel-btn").addEventListener("click", async ()
   currentChat = null;
 });
 
-document.getElementById("add-channel-btn").addEventListener("click", () => {
+on("add-channel-btn", "click", () => {
   document.getElementById("new-channel-name").value = "";
   document.getElementById("new-channel-locked").checked = false;
   document.getElementById("new-channel-message").textContent = "";
   document.getElementById("new-channel-modal-backdrop").style.display = "flex";
 });
 
-document.getElementById("close-new-channel-modal-btn").addEventListener("click", () => {
+on("close-new-channel-modal-btn", "click", () => {
   document.getElementById("new-channel-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("create-channel-btn").addEventListener("click", async () => {
+on("create-channel-btn", "click", async () => {
   if (!currentServer) return;
   const name = document.getElementById("new-channel-name").value.trim();
   const msg = document.getElementById("new-channel-message");
@@ -848,16 +890,16 @@ document.getElementById("create-channel-btn").addEventListener("click", async ()
   }
 });
 
-document.getElementById("server-invite-btn").addEventListener("click", () => {
+on("server-invite-btn", "click", () => {
   if (!currentServer) return;
   openInviteModal(currentServer);
 });
 
-document.getElementById("close-invite-modal-btn").addEventListener("click", () => {
+on("close-invite-modal-btn", "click", () => {
   document.getElementById("invite-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("copy-invite-link-btn").addEventListener("click", async () => {
+on("copy-invite-link-btn", "click", async () => {
   const input = document.getElementById("invite-link-input");
   input.select();
   try {
@@ -870,7 +912,7 @@ document.getElementById("copy-invite-link-btn").addEventListener("click", async 
   }
 });
 
-document.getElementById("server-settings-btn").addEventListener("click", () => {
+on("server-settings-btn", "click", () => {
   if (!currentServer) return;
   document.getElementById("server-settings-name").value = currentServer.name;
   document.getElementById("server-settings-private").checked = !!currentServer.isPrivate;
@@ -880,16 +922,16 @@ document.getElementById("server-settings-btn").addEventListener("click", () => {
   document.getElementById("server-settings-modal-backdrop").style.display = "flex";
 });
 
-document.getElementById("close-server-settings-btn").addEventListener("click", () => {
+on("close-server-settings-btn", "click", () => {
   document.getElementById("server-settings-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("server-banner-random-btn").addEventListener("click", () => {
+on("server-banner-random-btn", "click", () => {
   selectedServerBannerColor = randomBannerColor();
   buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
 });
 
-document.getElementById("save-server-settings-btn").addEventListener("click", async () => {
+on("save-server-settings-btn", "click", async () => {
   if (!currentServer) return;
   const name = document.getElementById("server-settings-name").value.trim();
   const msg = document.getElementById("server-settings-message");
@@ -907,7 +949,11 @@ document.getElementById("save-server-settings-btn").addEventListener("click", as
     await updateServerSettings(db, currentServer.id, { name, isPrivate, bannerColor: selectedServerBannerColor });
     currentServer = { ...currentServer, name, isPrivate, bannerColor: selectedServerBannerColor };
     renderServerHeader(currentServer, true);
-    document.getElementById("server-settings-modal-backdrop").style.display = "none";
+    msg.textContent = "Saved!";
+    msg.style.color = "#4ade80";
+    setTimeout(() => {
+      document.getElementById("server-settings-modal-backdrop").style.display = "none";
+    }, 700);
   } catch (err) {
     msg.textContent = err.message;
     msg.style.color = "#f87171";
@@ -916,7 +962,7 @@ document.getElementById("save-server-settings-btn").addEventListener("click", as
   }
 });
 
-document.getElementById("my-profile-settings-btn").addEventListener("click", () => {
+on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
   document.getElementById("profile-edit-gender").value = myProfile.gender || "";
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
@@ -925,16 +971,16 @@ document.getElementById("my-profile-settings-btn").addEventListener("click", () 
   document.getElementById("profile-edit-modal-backdrop").style.display = "flex";
 });
 
-document.getElementById("close-profile-edit-btn").addEventListener("click", () => {
+on("close-profile-edit-btn", "click", () => {
   document.getElementById("profile-edit-modal-backdrop").style.display = "none";
 });
 
-document.getElementById("profile-banner-random-btn").addEventListener("click", () => {
+on("profile-banner-random-btn", "click", () => {
   selectedProfileBannerColor = randomBannerColor();
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
 });
 
-document.getElementById("save-profile-btn").addEventListener("click", async () => {
+on("save-profile-btn", "click", async () => {
   const bio = document.getElementById("profile-edit-bio").value.trim();
   const gender = document.getElementById("profile-edit-gender").value;
   const msg = document.getElementById("profile-edit-message");
@@ -945,7 +991,11 @@ document.getElementById("save-profile-btn").addEventListener("click", async () =
   try {
     await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor });
     myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor };
-    document.getElementById("profile-edit-modal-backdrop").style.display = "none";
+    msg.textContent = "Profile saved!";
+    msg.style.color = "#4ade80";
+    setTimeout(() => {
+      document.getElementById("profile-edit-modal-backdrop").style.display = "none";
+    }, 700);
   } catch (err) {
     msg.textContent = err.message;
     msg.style.color = "#f87171";
