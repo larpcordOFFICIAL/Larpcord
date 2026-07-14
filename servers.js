@@ -60,6 +60,18 @@ export async function updateServerSettings(db, serverId, updates) {
   await updateDoc(doc(db, "servers", serverId), updates);
 }
 
+export async function markChannelRead(db, serverId, channelId, uid) {
+  await updateDoc(doc(db, "servers", serverId, "channels", channelId), {
+    [`lastRead.${uid}`]: serverTimestamp()
+  });
+}
+
+export async function clearServerMentions(db, serverId, uid) {
+  await updateDoc(doc(db, "servers", serverId), {
+    [`mentions.${uid}`]: 0
+  });
+}
+
 export async function joinServerByCode(db, uid, username, code) {
   const q = query(collection(db, "servers"), where("joinCode", "==", code.trim().toUpperCase()));
   const snap = await getDocs(q);
