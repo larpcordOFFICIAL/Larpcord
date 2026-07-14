@@ -164,24 +164,50 @@
     </div>
   </div>
 
-  <div id="profile-edit-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div id="settings-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
-      <button id="close-profile-edit-btn" class="close-modal-btn">✕</button>
-      <h3>Edit Profile</h3>
-      <textarea id="profile-edit-bio" placeholder="Write a short bio..." maxlength="150" rows="3"></textarea>
-      <select id="profile-edit-gender">
-        <option value="">Prefer not to say</option>
-        <option value="Woman">Woman</option>
-        <option value="Man">Man</option>
-        <option value="Non-binary">Non-binary</option>
-        <option value="Other">Other</option>
-      </select>
-      <div class="section-label">Banner Color</div>
-      <div class="color-swatch-row" id="profile-banner-swatches"></div>
-      <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
-      <div class="button-row">
-        <button id="save-profile-btn">Save</button>
+      <button id="close-settings-btn" class="close-modal-btn">✕</button>
+      <h3>Settings</h3>
+      <div class="modal-tabs">
+        <button class="settings-tab active" data-settings-tab="display" type="button">Display</button>
+        <button class="settings-tab" data-settings-tab="account" type="button">Account</button>
       </div>
+
+      <div id="settings-display-panel" class="modal-panel">
+        <textarea id="profile-edit-bio" placeholder="Write a short bio..." maxlength="150" rows="3"></textarea>
+        <select id="profile-edit-gender">
+          <option value="">Prefer not to say</option>
+          <option value="Woman">Woman</option>
+          <option value="Man">Man</option>
+          <option value="Non-binary">Non-binary</option>
+          <option value="Other">Other</option>
+        </select>
+        <div class="section-label">Banner Color</div>
+        <div class="color-swatch-row" id="profile-banner-swatches"></div>
+        <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+        <p class="settings-note">Profile pictures are coming once image uploads are set up.</p>
+        <div class="button-row">
+          <button id="save-profile-btn">Save</button>
+        </div>
+        <p id="profile-edit-message"></p>
+      </div>
+
+      <div id="settings-account-panel" class="modal-panel" style="display:none;">
+        <div class="section-label">Email</div>
+        <input type="text" id="account-current-email" readonly>
+        <input type="email" id="account-new-email" placeholder="New email (leave blank to keep)">
+        <div class="section-label">Password</div>
+        <input type="password" id="account-new-password" placeholder="New password (leave blank to keep)">
+        <div class="section-label">Confirm With Current Password</div>
+        <input type="password" id="account-current-password" placeholder="Current password">
+        <div class="button-row">
+          <button id="save-account-btn">Save</button>
+        </div>
+        <p id="account-edit-message"></p>
+      </div>
+    </div>
+  </div>
+
       <p id="profile-edit-message"></p>
     </div>
   </div>
