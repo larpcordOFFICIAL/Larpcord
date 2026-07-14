@@ -1,6 +1,5 @@
-
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
@@ -775,6 +774,16 @@ document.querySelectorAll(".modal-tab").forEach((tab) => {
   });
 });
 
+document.querySelectorAll(".settings-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const target = tab.dataset.settingsTab;
+    document.getElementById("settings-display-panel").style.display = target === "display" ? "block" : "none";
+    document.getElementById("settings-account-panel").style.display = target === "account" ? "block" : "none";
+  });
+});
+
 async function handleCreateServer(isPrivate) {
   const nameInput = document.getElementById("new-server-name");
   const msg = document.getElementById("server-modal-message");
@@ -968,11 +977,20 @@ on("my-profile-settings-btn", "click", () => {
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
   document.getElementById("profile-edit-message").textContent = "";
-  document.getElementById("profile-edit-modal-backdrop").style.display = "flex";
+  document.getElementById("account-current-email").value = auth.currentUser ? auth.currentUser.email : "";
+  document.getElementById("account-new-email").value = "";
+  document.getElementById("account-new-password").value = "";
+  document.getElementById("account-current-password").value = "";
+  document.getElementById("account-edit-message").textContent = "";
+  document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
+  document.querySelector('[data-settings-tab="display"]').classList.add("active");
+  document.getElementById("settings-display-panel").style.display = "block";
+  document.getElementById("settings-account-panel").style.display = "none";
+  document.getElementById("settings-modal-backdrop").style.display = "flex";
 });
 
-on("close-profile-edit-btn", "click", () => {
-  document.getElementById("profile-edit-modal-backdrop").style.display = "none";
+on("close-settings-btn", "click", () => {
+  document.getElementById("settings-modal-backdrop").style.display = "none";
 });
 
 on("profile-banner-random-btn", "click", () => {
@@ -991,13 +1009,68 @@ on("save-profile-btn", "click", async () => {
   try {
     await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor });
     myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor };
-    msg.textContent = "Profile saved!";
+    msg.textContent = "Saved!";
     msg.style.color = "#4ade80";
-    setTimeout(() => {
-      document.getElementById("profile-edit-modal-backdrop").style.display = "none";
-    }, 700);
   } catch (err) {
     msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+on("save-account-btn", "click", async () => {
+  const newEmail = document.getElementById("account-new-email").value.trim();
+  const newPassword = document.getElementById("account-new-password").value;
+  const currentPassword = document.getElementById("account-current-password").value;
+  const msg = document.getElementById("account-edit-message");
+
+  if (!newEmail && !newPassword) {
+    msg.textContent = "Enter a new email or new password to change something.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  if (!currentPassword) {
+    msg.textContent = "Enter your current password to confirm changes.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  if (newPassword && newPassword.length < 6) {
+    msg.textContent = "New password needs to be at least 6 characters.";
+    msg.style.color = "#f87171";
+    return;
+  }
+
+  const saveBtn = document.getElementById("save-account-btn");
+  saveBtn.disabled = true;
+  msg.textContent = "Saving...";
+  msg.style.color = "#8a8fa3";
+
+  try {
+    const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+    await reauthenticateWithCredential(auth.currentUser, credential);
+
+    if (newEmail && newEmail !== auth.currentUser.email) {
+      await updateEmail(auth.currentUser, newEmail);
+      document.getElementById("account-current-email").value = newEmail;
+    }
+    if (newPassword) {
+      await updatePassword(auth.currentUser, newPassword);
+    }
+
+    document.getElementById("account-new-email").value = "";
+    document.getElementById("account-new-password").value = "";
+    document.getElementById("account-current-password").value = "";
+    msg.textContent = "Account updated!";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    if (err.code === "auth/wrong-password") {
+      msg.textContent = "That current password is incorrect.";
+    } else if (err.code === "auth/requires-recent-login") {
+      msg.textContent = "For security, please log out and back in, then try again.";
+    } else {
+      msg.textContent = err.message;
+    }
     msg.style.color = "#f87171";
   } finally {
     saveBtn.disabled = false;
