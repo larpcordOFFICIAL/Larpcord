@@ -24,6 +24,7 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
     joinCode,
     bannerColor: randomBannerColor(),
     members: [ownerUid],
+    memberUsernames: { [ownerUid]: ownerUsername },
     createdAt: serverTimestamp()
   });
 
@@ -91,7 +92,10 @@ export async function joinServerByCode(db, uid, username, code) {
     });
     return { requested: true, serverName: data.name };
   } else {
-    await updateDoc(doc(db, "servers", serverId), { members: arrayUnion(uid) });
+    await updateDoc(doc(db, "servers", serverId), {
+      members: arrayUnion(uid),
+      [`memberUsernames.${uid}`]: username
+    });
     return { requested: false, serverName: data.name };
   }
 }
@@ -107,8 +111,11 @@ export function listenForJoinRequests(db, serverId, callback) {
   );
 }
 
-export async function approveJoinRequest(db, serverId, uid) {
-  await updateDoc(doc(db, "servers", serverId), { members: arrayUnion(uid) });
+export async function approveJoinRequest(db, serverId, uid, username) {
+  await updateDoc(doc(db, "servers", serverId), {
+    members: arrayUnion(uid),
+    [`memberUsernames.${uid}`]: username
+  });
   await deleteDoc(doc(db, "servers", serverId, "joinRequests", uid));
 }
 
