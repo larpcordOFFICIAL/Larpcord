@@ -37,6 +37,8 @@ body {
 .rail-icon { width: 44px; height: 44px; border-radius: 16px; background-color: #16161c; color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: 800; cursor: pointer; flex-shrink: 0; }
 .rail-home { background-color: #0000ff; }
 .server-icon { margin: 0; }
+.rail-icon-wrapper { position: relative; flex-shrink: 0; }
+.rail-badge { position: absolute; bottom: -4px; right: -4px; background-color: #ef4444; color: #ffffff; font-size: 10px; font-weight: 700; min-width: 17px; height: 17px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid #050507; }
 
 .sidebar { width: 260px; background-color: #101014; display: flex; flex-direction: column; border-right: 1px solid #1c1c22; }
 .sidebar-header { padding: 18px 16px 8px; font-weight: 700; color: #ffffff; }
@@ -85,6 +87,7 @@ body {
 .channel-item:hover { background-color: #16161c; }
 .channel-hash { color: #6b6f80; font-weight: 700; }
 .channel-name-text { flex: 1; }
+.channel-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; flex-shrink: 0; }
 .channel-gear-btn { background: none; border: none; color: #8a8fa3; cursor: pointer; padding: 2px; display: flex; align-items: center; }
 .channel-gear-btn:hover { color: #ffffff; }
 
