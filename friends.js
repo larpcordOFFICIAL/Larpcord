@@ -1,4 +1,4 @@
-import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, query, where, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, query, where, onSnapshot, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 export function friendRequestId(fromUid, toUid) {
   return fromUid + "_" + toUid;
@@ -39,6 +39,7 @@ export async function acceptFriendRequest(db, request) {
       [request.from]: request.fromUsername,
       [request.to]: request.toUsername
     },
+    unread: { [request.from]: 0, [request.to]: 0 },
     createdAt: serverTimestamp()
   });
   await deleteDoc(doc(db, "friendRequests", request.id));
@@ -54,7 +55,8 @@ export function listenForFriends(db, myUid, callback) {
     const friends = snap.docs.map((d) => {
       const data = d.data();
       const otherUid = data.members.find((uid) => uid !== myUid);
-      return { uid: otherUid, username: data.usernames[otherUid] };
+      const unreadCount = (data.unread && data.unread[myUid]) || 0;
+      return { uid: otherUid, username: data.usernames[otherUid], unreadCount, lastMessageAt: data.lastMessageAt || null };
     });
     callback(friends);
   });
