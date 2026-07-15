@@ -1,4 +1,4 @@
-import { collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 export function listenForMessages(db, pathSegments, callback) {
   const q = query(collection(db, ...pathSegments, "messages"), orderBy("createdAt", "asc"));
@@ -24,24 +24,29 @@ export async function sendMessage(db, pathSegments, senderId, senderUsername, te
     };
   }
   await addDoc(collection(db, ...pathSegments, "messages"), messageData);
+  await updateDoc(doc(db, ...pathSegments), { lastMessageAt: serverTimestamp() });
 
   if (recipientUid) {
     await updateDoc(doc(db, ...pathSegments), { [`unread.${recipientUid}`]: increment(1) });
   }
 
-  if (channelMeta) {
-    const channelRef = doc(db, "servers", channelMeta.serverId, "channels", channelMeta.channelId);
-    await updateDoc(channelRef, { lastMessageAt: serverTimestamp() });
-
-    if (channelMeta.members && text.trim()) {
-      const mentioned = channelMeta.members.filter((m) =>
-        m.uid !== senderId && m.username && new RegExp(`@${m.username}\\b`, "i").test(text)
-      );
-      if (mentioned.length > 0) {
-        const serverRef = doc(db, "servers", channelMeta.serverId);
-        const updates = {};
-        mentioned.forEach((m) => { updates[`mentions.${m.uid}`] = increment(1); });
-        await updateDoc(serverRef, updates);
+  if (channelMeta && text.trim()) {
+    const matches = [...text.matchAll(/@(\w+)/g)].map((m) => m[1]);
+    const uniqueNames = [...new Set(matches)];
+    for (const name of uniqueNames) {
+      try {
+        const q = query(collection(db, "users"), where("username", "==", name));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const mentionedUid = snap.docs[0].id;
+          if (mentionedUid !== senderId) {
+            await updateDoc(doc(db, "servers", channelMeta.serverId), {
+              [`mentions.${mentionedUid}`]: increment(1)
+            });
+          }
+        }
+      } catch (err) {
+        // skip failed lookups, don't block sending the message
       }
     }
   }
