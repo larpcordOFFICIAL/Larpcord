@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
@@ -26,6 +26,8 @@ let replyingTo = null;
 let gifSearchTimeout = null;
 let selectedServerBannerColor = null;
 let selectedProfileBannerColor = null;
+let previousMentions = {};
+let mentionsInitialized = false;
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
@@ -56,6 +58,20 @@ function formatTime(timestamp) {
   return timestamp.toDate().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return "";
+  const then = timestamp.toDate();
+  const now = new Date();
+  const diffMin = Math.floor((now - then) / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return then.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 function getJoinLinkForCode(code) {
   return `${window.location.origin}${window.location.pathname}?join=${code}`;
 }
@@ -81,6 +97,19 @@ function applyStaticIcons() {
   setIcon("logout-btn", ICONS.power);
 }
 applyStaticIcons();
+
+function showToast(message) {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("toast-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
@@ -152,7 +181,15 @@ function renderFriends(friends) {
     const badge = friend.unreadCount > 0
       ? `<span class="unread-badge">${friend.unreadCount > 9 ? "9+" : friend.unreadCount}</span>`
       : "";
-    item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span class="friend-name">${escapeHtml(friend.username)}</span>${badge}`;
+    const lastMsgText = friend.lastMessageAt ? formatRelativeTime(friend.lastMessageAt) : "No messages yet";
+    item.innerHTML = `
+      <div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
+      <div class="friend-info">
+        <span class="friend-name">${escapeHtml(friend.username)}</span>
+        <span class="friend-last-msg">${escapeHtml(lastMsgText)}</span>
+      </div>
+      ${badge}
+    `;
     item.querySelector(".avatar-circle").addEventListener("click", (e) => {
       e.stopPropagation();
       openProfileView(friend.uid, friend.username);
@@ -184,8 +221,14 @@ function renderServerRail(servers) {
       wrapper.appendChild(badge);
     }
 
+    if (mentionsInitialized && mentionCount > (previousMentions[server.id] || 0)) {
+      showToast(`You were mentioned in ${server.name}`);
+    }
+    previousMentions[server.id] = mentionCount;
+
     rail.appendChild(wrapper);
   });
+  mentionsInitialized = true;
 }
 
 function renderServerHeader(server, isOwner) {
@@ -370,8 +413,10 @@ function renderSingleMessage(msg) {
     ? `<img class="message-gif" src="${msg.gifUrl}">`
     : `<p class="message-text">${renderTextWithMentions(msg.text)}</p>`;
 
+  const hasMention = /@\w+/.test(msg.text || "");
+
   return `
-    <div class="message-line">
+    <div class="message-line ${hasMention ? "mentioned" : ""}">
       ${replyHtml}
       ${contentHtml}
       <span class="message-actions">
@@ -395,13 +440,17 @@ function renderMessages(messages) {
     const linesHtml = group.messages.map((msg) => renderSingleMessage(msg)).join("");
 
     row.innerHTML = `
-      <div class="avatar-circle msg-avatar" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
+      <div class="avatar-circle msg-avatar clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
       <div class="message-content">
-        <span class="message-sender">${escapeHtml(group.senderUsername)}<span class="message-time">${formatTime(group.firstTime)}</span></span>
+        <span class="message-sender clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}">${escapeHtml(group.senderUsername)}<span class="message-time">${formatTime(group.firstTime)}</span></span>
         ${linesHtml}
       </div>
     `;
     list.appendChild(row);
+  });
+
+  list.querySelectorAll(".msg-avatar, .message-sender").forEach((el) => {
+    el.addEventListener("click", () => openProfileView(el.dataset.uid, el.dataset.username));
   });
 
   list.querySelectorAll(".react-btn").forEach((btn) => {
@@ -646,11 +695,9 @@ function sendCurrentMessage() {
   const text = input.value;
   if (!text.trim() || !currentChat) return;
 
-  let channelMeta = null;
-  if (currentChat.type === "channel" && currentServer) {
-    const members = Object.entries(currentServer.memberUsernames || {}).map(([uid, username]) => ({ uid, username }));
-    channelMeta = { serverId: currentChat.serverId, channelId: currentChat.channelId, members };
-  }
+  const channelMeta = currentChat.type === "channel"
+    ? { serverId: currentChat.serverId, channelId: currentChat.channelId }
+    : null;
 
   sendMessage(db, currentChat.pathSegments, myUid, myUsername, text, replyingTo, null, currentChat.recipientUid || null, null, channelMeta);
   input.value = "";
@@ -781,6 +828,7 @@ document.querySelectorAll(".settings-tab").forEach((tab) => {
     const target = tab.dataset.settingsTab;
     document.getElementById("settings-display-panel").style.display = target === "display" ? "block" : "none";
     document.getElementById("settings-account-panel").style.display = target === "account" ? "block" : "none";
+    document.getElementById("settings-security-panel").style.display = target === "security" ? "block" : "none";
   });
 });
 
@@ -982,10 +1030,13 @@ on("my-profile-settings-btn", "click", () => {
   document.getElementById("account-new-password").value = "";
   document.getElementById("account-current-password").value = "";
   document.getElementById("account-edit-message").textContent = "";
+  document.getElementById("delete-account-password").value = "";
+  document.getElementById("delete-account-message").textContent = "";
   document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
   document.querySelector('[data-settings-tab="display"]').classList.add("active");
   document.getElementById("settings-display-panel").style.display = "block";
   document.getElementById("settings-account-panel").style.display = "none";
+  document.getElementById("settings-security-panel").style.display = "none";
   document.getElementById("settings-modal-backdrop").style.display = "flex";
 });
 
@@ -1000,7 +1051,7 @@ on("profile-banner-random-btn", "click", () => {
 
 on("save-profile-btn", "click", async () => {
   const bio = document.getElementById("profile-edit-bio").value.trim();
-  const gender = document.getElementById("profile-edit-gender").value;
+  const gender = document.getElementById("profile-edit-gender").value.trim();
   const msg = document.getElementById("profile-edit-message");
   const saveBtn = document.getElementById("save-profile-btn");
   saveBtn.disabled = true;
@@ -1031,7 +1082,7 @@ on("save-account-btn", "click", async () => {
     return;
   }
   if (!currentPassword) {
-    msg.textContent = "Enter your current password to confirm changes.";
+    msg.textContent = "Enter your current password to confirm.";
     msg.style.color = "#f87171";
     return;
   }
@@ -1074,5 +1125,36 @@ on("save-account-btn", "click", async () => {
     msg.style.color = "#f87171";
   } finally {
     saveBtn.disabled = false;
+  }
+});
+
+on("delete-account-btn", "click", async () => {
+  const password = document.getElementById("delete-account-password").value;
+  const msg = document.getElementById("delete-account-message");
+  if (!password) {
+    msg.textContent = "Enter your current password to confirm.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  if (!confirm("This permanently deletes your account. Are you sure?")) return;
+
+  const btn = document.getElementById("delete-account-btn");
+  btn.disabled = true;
+  msg.textContent = "Deleting...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+    await reauthenticateWithCredential(auth.currentUser, credential);
+    await deleteDoc(doc(db, "users", myUid));
+    await deleteUser(auth.currentUser);
+    window.location.href = "login.html";
+  } catch (err) {
+    if (err.code === "auth/wrong-password") {
+      msg.textContent = "That password is incorrect.";
+    } else {
+      msg.textContent = err.message;
+    }
+    msg.style.color = "#f87171";
+    btn.disabled = false;
   }
 });
