@@ -61,7 +61,7 @@
           <div class="profile-name" id="my-username">Loading...</div>
           <div class="profile-status"><span class="status-dot"></span>Online</div>
         </div>
-        <button id="my-profile-settings-btn" class="icon-btn" title="Edit profile"></button>
+        <button id="my-profile-settings-btn" class="icon-btn" title="Settings"></button>
         <button id="logout-btn" title="Log out"></button>
       </div>
     </div>
@@ -74,6 +74,8 @@
     </div>
 
   </div>
+
+  <div id="toast-container" class="toast-container"></div>
 
   <div id="server-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
@@ -164,24 +166,19 @@
     </div>
   </div>
 
-    <div id="settings-modal-backdrop" class="modal-backdrop" style="display:none;">
+  <div id="settings-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
       <button id="close-settings-btn" class="close-modal-btn">✕</button>
       <h3>Settings</h3>
       <div class="modal-tabs">
         <button class="settings-tab active" data-settings-tab="display" type="button">Display</button>
         <button class="settings-tab" data-settings-tab="account" type="button">Account</button>
+        <button class="settings-tab" data-settings-tab="security" type="button">Security</button>
       </div>
 
       <div id="settings-display-panel" class="modal-panel">
         <textarea id="profile-edit-bio" placeholder="Write a short bio..." maxlength="150" rows="3"></textarea>
-        <select id="profile-edit-gender">
-          <option value="">Prefer not to say</option>
-          <option value="Woman">Woman</option>
-          <option value="Man">Man</option>
-          <option value="Non-binary">Non-binary</option>
-          <option value="Other">Other</option>
-        </select>
+        <input type="text" id="profile-edit-gender" placeholder="Gender (optional)">
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
@@ -193,21 +190,31 @@
       </div>
 
       <div id="settings-account-panel" class="modal-panel" style="display:none;">
-        <div class="section-label">Email</div>
+        <div class="section-label">Change Email</div>
         <input type="text" id="account-current-email" readonly>
-        <input type="email" id="account-new-email" placeholder="New email (leave blank to keep)">
-        <div class="section-label">Password</div>
-        <input type="password" id="account-new-password" placeholder="New password (leave blank to keep)">
-        <div class="section-label">Confirm With Current Password</div>
+        <input type="email" id="account-new-email" placeholder="New email">
+        <div class="section-label">Change Password</div>
+        <input type="password" id="account-new-password" placeholder="New password">
+        <div class="section-label">Confirm Current Password</div>
         <input type="password" id="account-current-password" placeholder="Current password">
         <div class="button-row">
           <button id="save-account-btn">Save</button>
         </div>
         <p id="account-edit-message"></p>
       </div>
+
+      <div id="settings-security-panel" class="modal-panel" style="display:none;">
+        <p class="settings-note">Two-factor authentication and login activity are coming soon.</p>
+        <div class="section-label">Delete Account</div>
+        <p class="settings-note">This permanently deletes your account and profile. This can't be undone.</p>
+        <input type="password" id="delete-account-password" placeholder="Current password">
+        <div class="button-row">
+          <button id="delete-account-btn" class="danger">Delete My Account</button>
+        </div>
+        <p id="delete-account-message"></p>
+      </div>
     </div>
   </div>
-
 
   <div id="profile-view-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card profile-view-card">
