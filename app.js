@@ -7,6 +7,8 @@ import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, decl
 import { listenForMessages, sendMessage, toggleReaction, markAsRead } from './messages.js';
 import { searchGifs } from './giphy.js';
 import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions } from './servers.js';
+import { uploadProfileImage } from './cloudinary.js';
+
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1156,5 +1158,56 @@ on("delete-account-btn", "click", async () => {
     }
     msg.style.color = "#f87171";
     btn.disabled = false;
+  }
+});
+function renderMyAvatar() {
+  const el = document.getElementById("my-avatar");
+  if (myProfile.pfpUrl) {
+    el.style.backgroundImage = `url(${myProfile.pfpUrl})`;
+    el.style.backgroundSize = "cover";
+    el.style.backgroundPosition = "center";
+    el.textContent = "";
+  } else {
+    el.style.backgroundImage = "none";
+    el.style.backgroundColor = getAvatarColor(myUsername);
+    el.textContent = getInitial(myUsername);
+  }
+}
+
+function renderPfpPreview() {
+  const el = document.getElementById("pfp-preview");
+  if (myProfile.pfpUrl) {
+    el.style.backgroundImage = `url(${myProfile.pfpUrl})`;
+    el.style.backgroundSize = "cover";
+    el.style.backgroundPosition = "center";
+    el.textContent = "";
+  } else {
+    el.style.backgroundImage = "none";
+    el.style.backgroundColor = getAvatarColor(myUsername);
+    el.textContent = getInitial(myUsername);
+  }
+}
+
+on("pfp-upload-btn", "click", () => {
+  document.getElementById("pfp-file-input").click();
+});
+
+on("pfp-file-input", "change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById("pfp-upload-message");
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const url = await uploadProfileImage(file);
+    await updateDoc(doc(db, "users", myUid), { pfpUrl: url });
+    myProfile = { ...myProfile, pfpUrl: url };
+    renderMyAvatar();
+    renderPfpPreview();
+    msg.textContent = "Photo updated!";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
   }
 });
