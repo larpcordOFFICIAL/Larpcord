@@ -1,4 +1,4 @@
-import { collection, addDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { collection, addDoc, doc, getDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, increment, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 export function listenForMessages(db, pathSegments, callback) {
   const q = query(collection(db, ...pathSegments, "messages"), orderBy("createdAt", "asc"));
@@ -67,4 +67,8 @@ export async function toggleReaction(db, pathSegments, messageId, emoji, uid) {
   } else {
     await updateDoc(msgRef, { [`reactions.${emoji}`]: arrayUnion(uid) });
   }
+}
+
+export async function deleteMessage(db, pathSegments, messageId) {
+  await deleteDoc(doc(db, ...pathSegments, "messages", messageId));
 }
