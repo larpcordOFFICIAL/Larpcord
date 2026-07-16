@@ -9,7 +9,6 @@ import { searchGifs } from './giphy.js';
 import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
 
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -113,6 +112,35 @@ function showToast(message) {
   }, 4000);
 }
 
+function renderMyAvatar() {
+  const el = document.getElementById("my-avatar");
+  if (myProfile.pfpUrl) {
+    el.style.backgroundImage = `url(${myProfile.pfpUrl})`;
+    el.style.backgroundSize = "cover";
+    el.style.backgroundPosition = "center";
+    el.textContent = "";
+  } else {
+    el.style.backgroundImage = "none";
+    el.style.backgroundColor = getAvatarColor(myUsername);
+    el.textContent = getInitial(myUsername);
+  }
+}
+
+function renderPfpPreview() {
+  const el = document.getElementById("pfp-preview");
+  if (!el) return;
+  if (myProfile.pfpUrl) {
+    el.style.backgroundImage = `url(${myProfile.pfpUrl})`;
+    el.style.backgroundSize = "cover";
+    el.style.backgroundPosition = "center";
+    el.textContent = "";
+  } else {
+    el.style.backgroundImage = "none";
+    el.style.backgroundColor = getAvatarColor(myUsername);
+    el.textContent = getInitial(myUsername);
+  }
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -126,9 +154,7 @@ onAuthStateChanged(auth, async (user) => {
   myProfile = data;
 
   document.getElementById("my-username").textContent = myUsername;
-  const avatarEl = document.getElementById("my-avatar");
-  avatarEl.textContent = getInitial(myUsername);
-  avatarEl.style.backgroundColor = getAvatarColor(myUsername);
+  renderMyAvatar();
 
   listenForIncomingRequests(db, myUid, renderRequests);
   listenForFriends(db, myUid, renderFriends);
@@ -759,8 +785,10 @@ function buildColorSwatches(containerId, selectedColor, onSelect) {
 async function openProfileView(uid, fallbackUsername) {
   const modal = document.getElementById("profile-view-modal-backdrop");
   document.getElementById("profile-view-username").textContent = fallbackUsername;
-  document.getElementById("profile-view-avatar").textContent = getInitial(fallbackUsername);
-  document.getElementById("profile-view-avatar").style.backgroundColor = getAvatarColor(fallbackUsername);
+  const avatarEl = document.getElementById("profile-view-avatar");
+  avatarEl.style.backgroundImage = "none";
+  avatarEl.style.backgroundColor = getAvatarColor(fallbackUsername);
+  avatarEl.textContent = getInitial(fallbackUsername);
   document.getElementById("profile-view-banner").style.backgroundColor = "#2a2a33";
   document.getElementById("profile-view-bio").textContent = "Loading...";
   document.getElementById("profile-view-gender").textContent = "Loading...";
@@ -771,6 +799,12 @@ async function openProfileView(uid, fallbackUsername) {
     document.getElementById("profile-view-banner").style.backgroundColor = data.bannerColor || "#0000ff";
     document.getElementById("profile-view-bio").textContent = data.bio && data.bio.trim() ? data.bio : "No bio yet.";
     document.getElementById("profile-view-gender").textContent = data.gender && data.gender.trim() ? data.gender : "Not specified";
+    if (data.pfpUrl) {
+      avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
+      avatarEl.style.backgroundSize = "cover";
+      avatarEl.style.backgroundPosition = "center";
+      avatarEl.textContent = "";
+    }
   } catch (err) {
     document.getElementById("profile-view-bio").textContent = "Couldn't load profile.";
     document.getElementById("profile-view-gender").textContent = "";
@@ -1027,6 +1061,8 @@ on("my-profile-settings-btn", "click", () => {
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
   document.getElementById("profile-edit-message").textContent = "";
+  document.getElementById("pfp-upload-message").textContent = "";
+  renderPfpPreview();
   document.getElementById("account-current-email").value = auth.currentUser ? auth.currentUser.email : "";
   document.getElementById("account-new-email").value = "";
   document.getElementById("account-new-password").value = "";
@@ -1049,6 +1085,30 @@ on("close-settings-btn", "click", () => {
 on("profile-banner-random-btn", "click", () => {
   selectedProfileBannerColor = randomBannerColor();
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
+});
+
+on("pfp-upload-btn", "click", () => {
+  document.getElementById("pfp-file-input").click();
+});
+
+on("pfp-file-input", "change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById("pfp-upload-message");
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const url = await uploadProfileImage(file);
+    await updateDoc(doc(db, "users", myUid), { pfpUrl: url });
+    myProfile = { ...myProfile, pfpUrl: url };
+    renderMyAvatar();
+    renderPfpPreview();
+    msg.textContent = "Photo updated!";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
 });
 
 on("save-profile-btn", "click", async () => {
@@ -1158,56 +1218,5 @@ on("delete-account-btn", "click", async () => {
     }
     msg.style.color = "#f87171";
     btn.disabled = false;
-  }
-});
-function renderMyAvatar() {
-  const el = document.getElementById("my-avatar");
-  if (myProfile.pfpUrl) {
-    el.style.backgroundImage = `url(${myProfile.pfpUrl})`;
-    el.style.backgroundSize = "cover";
-    el.style.backgroundPosition = "center";
-    el.textContent = "";
-  } else {
-    el.style.backgroundImage = "none";
-    el.style.backgroundColor = getAvatarColor(myUsername);
-    el.textContent = getInitial(myUsername);
-  }
-}
-
-function renderPfpPreview() {
-  const el = document.getElementById("pfp-preview");
-  if (myProfile.pfpUrl) {
-    el.style.backgroundImage = `url(${myProfile.pfpUrl})`;
-    el.style.backgroundSize = "cover";
-    el.style.backgroundPosition = "center";
-    el.textContent = "";
-  } else {
-    el.style.backgroundImage = "none";
-    el.style.backgroundColor = getAvatarColor(myUsername);
-    el.textContent = getInitial(myUsername);
-  }
-}
-
-on("pfp-upload-btn", "click", () => {
-  document.getElementById("pfp-file-input").click();
-});
-
-on("pfp-file-input", "change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const msg = document.getElementById("pfp-upload-message");
-  msg.textContent = "Uploading...";
-  msg.style.color = "#8a8fa3";
-  try {
-    const url = await uploadProfileImage(file);
-    await updateDoc(doc(db, "users", myUid), { pfpUrl: url });
-    myProfile = { ...myProfile, pfpUrl: url };
-    renderMyAvatar();
-    renderPfpPreview();
-    msg.textContent = "Photo updated!";
-    msg.style.color = "#4ade80";
-  } catch (err) {
-    msg.textContent = err.message;
-    msg.style.color = "#f87171";
   }
 });
