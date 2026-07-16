@@ -61,6 +61,24 @@ export async function updateServerSettings(db, serverId, updates) {
   await updateDoc(doc(db, "servers", serverId), updates);
 }
 
+export async function deleteServerEntirely(db, serverId) {
+  const channelsSnap = await getDocs(collection(db, "servers", serverId, "channels"));
+  for (const chDoc of channelsSnap.docs) {
+    const messagesSnap = await getDocs(collection(db, "servers", serverId, "channels", chDoc.id, "messages"));
+    for (const msgDoc of messagesSnap.docs) {
+      await deleteDoc(msgDoc.ref);
+    }
+    await deleteDoc(chDoc.ref);
+  }
+
+  const joinReqSnap = await getDocs(collection(db, "servers", serverId, "joinRequests"));
+  for (const reqDoc of joinReqSnap.docs) {
+    await deleteDoc(reqDoc.ref);
+  }
+
+  await deleteDoc(doc(db, "servers", serverId));
+}
+
 export async function markChannelRead(db, serverId, channelId, uid) {
   await updateDoc(doc(db, "servers", serverId, "channels", channelId), {
     [`lastRead.${uid}`]: serverTimestamp()
