@@ -177,6 +177,15 @@
       </div>
 
       <div id="settings-display-panel" class="modal-panel">
+               <div class="pfp-upload-row">
+          <div class="pfp-preview" id="pfp-preview"></div>
+          <div>
+            <input type="file" id="pfp-file-input" accept="image/*" style="display:none;">
+            <button type="button" id="pfp-upload-btn" class="secondary small-btn">Change Photo</button>
+            <p id="pfp-upload-message" class="settings-note"></p>
+          </div>
+        </div>
+
         <textarea id="profile-edit-bio" placeholder="Write a short bio..." maxlength="150" rows="3"></textarea>
         <input type="text" id="profile-edit-gender" placeholder="Gender (optional)">
         <div class="section-label">Banner Color</div>
