@@ -29,6 +29,7 @@ let selectedServerBannerColor = null;
 let selectedProfileBannerColor = null;
 let previousMentions = {};
 let mentionsInitialized = false;
+const pfpCache = {};
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
@@ -141,6 +142,30 @@ function renderPfpPreview() {
   }
 }
 
+async function getCachedPfp(uid) {
+  if (uid === myUid) return myProfile.pfpUrl || null;
+  if (uid in pfpCache) return pfpCache[uid];
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    pfpCache[uid] = (snap.exists() && snap.data().pfpUrl) || null;
+  } catch (err) {
+    pfpCache[uid] = null;
+  }
+  return pfpCache[uid];
+}
+
+function applyAvatarImage(el, uid) {
+  if (!el || !uid) return;
+  getCachedPfp(uid).then((url) => {
+    if (url) {
+      el.style.backgroundImage = `url(${url})`;
+      el.style.backgroundSize = "cover";
+      el.style.backgroundPosition = "center";
+      el.textContent = "";
+    }
+  });
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -218,7 +243,9 @@ function renderFriends(friends) {
       </div>
       ${badge}
     `;
-    item.querySelector(".avatar-circle").addEventListener("click", (e) => {
+    const avatarEl = item.querySelector(".avatar-circle");
+    applyAvatarImage(avatarEl, friend.uid);
+    avatarEl.addEventListener("click", (e) => {
       e.stopPropagation();
       openProfileView(friend.uid, friend.username);
     });
@@ -481,6 +508,10 @@ function renderMessages(messages) {
     el.addEventListener("click", () => openProfileView(el.dataset.uid, el.dataset.username));
   });
 
+  list.querySelectorAll(".msg-avatar").forEach((el) => {
+    applyAvatarImage(el, el.dataset.uid);
+  });
+
   list.querySelectorAll(".react-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const el = document.getElementById("quick-" + btn.dataset.msgId);
@@ -687,6 +718,7 @@ function openChat(friend) {
     </div>
   `;
 
+  applyAvatarImage(document.getElementById("chat-header-avatar"), friend.uid);
   document.getElementById("chat-header-avatar").addEventListener("click", () => openProfileView(friend.uid, friend.username));
   document.getElementById("chat-header-username").addEventListener("click", () => openProfileView(friend.uid, friend.username));
 
@@ -747,6 +779,7 @@ function openInviteModal(server) {
       const item = document.createElement("div");
       item.className = "friend-item";
       item.innerHTML = `<div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div><span class="friend-name">${escapeHtml(friend.username)}</span><button class="invite-send-btn">Send</button>`;
+      applyAvatarImage(item.querySelector(".avatar-circle"), friend.uid);
       item.querySelector(".invite-send-btn").addEventListener("click", (e) => {
         e.stopPropagation();
         sendServerInvite(server, friend);
