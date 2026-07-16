@@ -213,3 +213,5 @@ button:disabled { opacity: 0.5; cursor: not-allowed !important; }
 .toast-out { animation: toast-out 0.3s ease-in forwards; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateX(20px); } }
+.pfp-upload-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pfp-preview { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 20px; flex-shrink: 0; background-color: #0000ff; }
