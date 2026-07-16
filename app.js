@@ -4,9 +4,9 @@ import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'https://www.gst
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
-import { listenForMessages, sendMessage, toggleReaction, markAsRead } from './messages.js';
+import { listenForMessages, sendMessage, toggleReaction, markAsRead, deleteMessage } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
 
 const app = initializeApp(firebaseConfig);
@@ -42,7 +42,8 @@ const ICONS = {
   gear: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
   share: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>`,
   lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
-  power: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`
+  power: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`,
+  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`
 };
 
 function escapeHtml(str) {
@@ -469,6 +470,8 @@ function renderSingleMessage(msg) {
     : `<p class="message-text">${renderTextWithMentions(msg.text)}</p>`;
 
   const hasMention = /@\w+/.test(msg.text || "");
+  const canDelete = msg.senderId === myUid || (currentChat && currentChat.type === "channel" && currentChat.isOwner);
+  const deleteHtml = canDelete ? `<button class="delete-msg-btn" data-msg-id="${msg.id}">${ICONS.trash}</button>` : "";
 
   return `
     <div class="message-line ${hasMention ? "mentioned" : ""}">
@@ -477,6 +480,7 @@ function renderSingleMessage(msg) {
       <span class="message-actions">
         <button class="react-btn" data-msg-id="${msg.id}">${ICONS.addReaction}</button>
         <button class="reply-btn" data-msg-id="${msg.id}" data-sender="${escapeHtml(msg.senderUsername)}" data-text="${escapeHtml(msg.text || (msg.gifUrl ? 'a GIF' : (msg.invite ? 'a server invite' : '')))}">${ICONS.reply}</button>
+        ${deleteHtml}
       </span>
       <div class="quick-reactions" id="quick-${msg.id}" style="display:none;">${quickHtml}</div>
       ${renderReactions(msg)}
@@ -534,6 +538,17 @@ function renderMessages(messages) {
 
   list.querySelectorAll(".reply-btn").forEach((btn) => {
     btn.addEventListener("click", () => startReply(btn.dataset.msgId, btn.dataset.sender, btn.dataset.text));
+  });
+
+  list.querySelectorAll(".delete-msg-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Delete this message? This can't be undone.")) return;
+      try {
+        await deleteMessage(db, currentChat.pathSegments, btn.dataset.msgId);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   });
 
   list.querySelectorAll(".invite-card").forEach(async (card) => {
@@ -731,7 +746,7 @@ function openChannel(server, channel) {
   const isOwner = server.ownerUid === myUid;
   const canWrite = isOwner || (channel.type === "general" && !channel.locked);
   replyingTo = null;
-  currentChat = { type: "channel", pathSegments: ["servers", server.id, "channels", channel.id], canWrite, serverId: server.id, channelId: channel.id };
+  currentChat = { type: "channel", pathSegments: ["servers", server.id, "channels", channel.id], canWrite, serverId: server.id, channelId: channel.id, isOwner };
 
   markChannelRead(db, server.id, channel.id, myUid);
 
@@ -1085,6 +1100,25 @@ on("save-server-settings-btn", "click", async () => {
     msg.style.color = "#f87171";
   } finally {
     saveBtn.disabled = false;
+  }
+});
+
+on("delete-server-btn", "click", async () => {
+  if (!currentServer) return;
+  if (!confirm(`Delete "${currentServer.name}" permanently? This removes all its channels and messages and can't be undone.`)) return;
+  const btn = document.getElementById("delete-server-btn");
+  const msg = document.getElementById("server-settings-message");
+  btn.disabled = true;
+  msg.textContent = "Deleting server...";
+  msg.style.color = "#8a8fa3";
+  try {
+    await deleteServerEntirely(db, currentServer.id);
+    document.getElementById("server-settings-modal-backdrop").style.display = "none";
+    showFriendsView();
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+    btn.disabled = false;
   }
 });
 
