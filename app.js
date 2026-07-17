@@ -1,12 +1,12 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId, unfriendUser, blockUser, unblockUser, listenForBlockedUsers } from './friends.js';
-import { listenForMessages, sendMessage, toggleReaction, markAsRead, deleteMessage } from './messages.js';
+import { listenForMessages, sendMessage, toggleReaction, markAsRead, deleteMessage, setTyping, listenForTyping } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer, setCustomJoinCode } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
 
 const app = initializeApp(firebaseConfig);
@@ -24,17 +24,20 @@ let editingChannel = null;
 let currentMessagesUnsubscribe = null;
 let currentChannelsUnsubscribe = null;
 let currentJoinRequestsUnsubscribe = null;
+let currentTypingUnsubscribe = null;
 let replyingTo = null;
 let gifSearchTimeout = null;
 let selectedServerBannerColor = null;
 let selectedProfileBannerColor = null;
 let previousMentions = {};
 let mentionsInitialized = false;
-const pfpCache = {};
+let typingThrottle = 0;
+const userExtraCache = {};
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
+const BADGE_ICONS = { leaf: "🍃", hammer: "🔨", gifter: "🎁" };
 
 const ICONS = {
   smile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>`,
@@ -131,6 +134,11 @@ function renderMyAvatar() {
   }
 }
 
+function renderMyBadgeRow() {
+  const el = document.getElementById("my-badge-row");
+  if (el) el.innerHTML = renderBadgesHtml(myProfile.badges);
+}
+
 function renderPfpPreview() {
   const el = document.getElementById("pfp-preview");
   if (!el) return;
@@ -146,27 +154,40 @@ function renderPfpPreview() {
   }
 }
 
-async function getCachedPfp(uid) {
-  if (uid === myUid) return myProfile.pfpUrl || null;
-  if (uid in pfpCache) return pfpCache[uid];
+function renderBadgesHtml(badges) {
+  if (!badges || badges.length === 0) return "";
+  return badges.map((b) => `<span class="badge-icon" title="${b}">${BADGE_ICONS[b] || ""}</span>`).join("");
+}
+
+async function getCachedUserExtra(uid) {
+  if (uid === myUid) return { pfpUrl: myProfile.pfpUrl || null, badges: myProfile.badges || [] };
+  if (uid in userExtraCache) return userExtraCache[uid];
   try {
     const snap = await getDoc(doc(db, "users", uid));
-    pfpCache[uid] = (snap.exists() && snap.data().pfpUrl) || null;
+    const d = snap.exists() ? snap.data() : {};
+    userExtraCache[uid] = { pfpUrl: d.pfpUrl || null, badges: d.badges || [] };
   } catch (err) {
-    pfpCache[uid] = null;
+    userExtraCache[uid] = { pfpUrl: null, badges: [] };
   }
-  return pfpCache[uid];
+  return userExtraCache[uid];
 }
 
 function applyAvatarImage(el, uid) {
   if (!el || !uid) return;
-  getCachedPfp(uid).then((url) => {
-    if (url) {
-      el.style.backgroundImage = `url(${url})`;
+  getCachedUserExtra(uid).then((extra) => {
+    if (extra.pfpUrl) {
+      el.style.backgroundImage = `url(${extra.pfpUrl})`;
       el.style.backgroundSize = "cover";
       el.style.backgroundPosition = "center";
       el.textContent = "";
     }
+  });
+}
+
+function applyBadges(el, uid) {
+  if (!el || !uid) return;
+  getCachedUserExtra(uid).then((extra) => {
+    el.innerHTML = renderBadgesHtml(extra.badges);
   });
 }
 
@@ -197,6 +218,46 @@ function renderBlockedUsersList() {
   });
 }
 
+function canWatchAdToday() {
+  if (!myProfile.lastAdWatch) return true;
+  const last = myProfile.lastAdWatch.toDate ? myProfile.lastAdWatch.toDate() : new Date(myProfile.lastAdWatch);
+  return last.toDateString() !== new Date().toDateString();
+}
+
+function renderQuestsTab() {
+  const amountEl = document.getElementById("credits-amount");
+  if (amountEl) amountEl.textContent = myProfile.credits || 0;
+  const btn = document.getElementById("watch-ad-btn");
+  if (!btn) return;
+  if (canWatchAdToday()) {
+    btn.disabled = false;
+    btn.textContent = "Watch Ad";
+  } else {
+    btn.disabled = true;
+    btn.textContent = "Come back tomorrow";
+  }
+}
+
+function renderTypingIndicator(typingMap) {
+  const el = document.getElementById("typing-indicator");
+  if (!el) return;
+  const now = Date.now();
+  const names = Object.entries(typingMap || {})
+    .filter(([uid, info]) => uid !== myUid && info && info.at && (now - info.at.toMillis()) < 6000)
+    .map(([, info]) => info.username);
+
+  if (names.length === 0) {
+    el.textContent = "";
+    el.style.display = "none";
+  } else if (names.length === 1) {
+    el.textContent = `${names[0]} is typing...`;
+    el.style.display = "block";
+  } else {
+    el.textContent = `${names.join(", ")} are typing...`;
+    el.style.display = "block";
+  }
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -211,6 +272,7 @@ onAuthStateChanged(auth, async (user) => {
 
   document.getElementById("my-username").textContent = myUsername;
   renderMyAvatar();
+  renderMyBadgeRow();
 
   listenForIncomingRequests(db, myUid, renderRequests);
   listenForFriends(db, myUid, renderFriends);
@@ -299,7 +361,7 @@ function renderServerRail(servers) {
     const icon = document.createElement("div");
     icon.className = "rail-icon server-icon";
     icon.textContent = getInitial(server.name);
-    icon.title = server.name;
+    icon.title = server.tagWord ? `${server.name} [${server.tagEmoji || ""}${server.tagWord}]` : server.name;
     icon.addEventListener("click", () => selectServer(server));
     wrapper.appendChild(icon);
 
@@ -325,7 +387,8 @@ function renderServerHeader(server, isOwner) {
   const iconEl = document.getElementById("server-header-icon");
   iconEl.textContent = getInitial(server.name);
   iconEl.style.backgroundColor = getAvatarColor(server.name);
-  document.getElementById("server-view-name").textContent = server.name;
+  const tagHtml = server.tagWord ? ` <span class="server-tag">${escapeHtml(server.tagEmoji || "")}${escapeHtml(server.tagWord)}</span>` : "";
+  document.getElementById("server-view-name").innerHTML = `${escapeHtml(server.name)}${tagHtml}`;
   const count = server.members ? server.members.length : 1;
   document.getElementById("server-view-count").textContent = `${count} player${count === 1 ? "" : "s"}`;
   document.getElementById("server-banner").style.backgroundColor = server.bannerColor || "#0000ff";
@@ -364,6 +427,7 @@ function selectServer(server) {
   `;
   currentChat = null;
   if (currentMessagesUnsubscribe) { currentMessagesUnsubscribe(); currentMessagesUnsubscribe = null; }
+  if (currentTypingUnsubscribe) { currentTypingUnsubscribe(); currentTypingUnsubscribe = null; }
 }
 
 function showFriendsView() {
@@ -380,6 +444,7 @@ function showFriendsView() {
   `;
   currentChat = null;
   if (currentMessagesUnsubscribe) { currentMessagesUnsubscribe(); currentMessagesUnsubscribe = null; }
+  if (currentTypingUnsubscribe) { currentTypingUnsubscribe(); currentTypingUnsubscribe = null; }
 }
 
 function renderChannelList(server, channels, isOwner) {
@@ -536,7 +601,7 @@ function renderMessages(messages) {
     row.innerHTML = `
       <div class="avatar-circle msg-avatar clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
       <div class="message-content">
-        <span class="message-sender clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}">${escapeHtml(group.senderUsername)}<span class="message-time">${formatTime(group.firstTime)}</span></span>
+        <span class="message-sender clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}">${escapeHtml(group.senderUsername)}<span class="badge-row" data-uid="${group.senderId}"></span><span class="message-time">${formatTime(group.firstTime)}</span></span>
         ${linesHtml}
       </div>
     `;
@@ -549,6 +614,10 @@ function renderMessages(messages) {
 
   list.querySelectorAll(".msg-avatar").forEach((el) => {
     applyAvatarImage(el, el.dataset.uid);
+  });
+
+  list.querySelectorAll(".message-sender > .badge-row").forEach((el) => {
+    applyBadges(el, el.dataset.uid);
   });
 
   list.querySelectorAll(".react-btn").forEach((btn) => {
@@ -703,6 +772,7 @@ function renderComposerHTML(canWrite, placeholder) {
     return `<div class="readonly-banner">${ICONS.lock} Only the owner can post in this channel</div>`;
   }
   return `
+    <div id="typing-indicator" class="typing-indicator" style="display:none;"></div>
     <div id="reply-preview-container"></div>
     <div class="message-input-row" id="message-input-row">
       <button id="plus-btn" class="icon-btn" title="Add image (coming soon)">+</button>
@@ -734,6 +804,13 @@ function attachComposerListeners(canWrite) {
   document.getElementById("send-btn").addEventListener("click", sendCurrentMessage);
   document.getElementById("message-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") sendCurrentMessage();
+  });
+  document.getElementById("message-input").addEventListener("input", () => {
+    const now = Date.now();
+    if (currentChat && now - typingThrottle > 2500) {
+      typingThrottle = now;
+      setTyping(db, currentChat.pathSegments, myUid, myUsername);
+    }
   });
   document.getElementById("plus-btn").addEventListener("click", () => {
     alert("Image uploads are coming in a future step!");
@@ -774,6 +851,8 @@ function openChat(friend) {
 
   if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
   currentMessagesUnsubscribe = listenForMessages(db, currentChat.pathSegments, renderMessages);
+  if (currentTypingUnsubscribe) currentTypingUnsubscribe();
+  currentTypingUnsubscribe = listenForTyping(db, currentChat.pathSegments, renderTypingIndicator);
   attachComposerListeners(true);
 }
 
@@ -797,6 +876,8 @@ function openChannel(server, channel) {
 
   if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
   currentMessagesUnsubscribe = listenForMessages(db, currentChat.pathSegments, renderMessages);
+  if (currentTypingUnsubscribe) currentTypingUnsubscribe();
+  currentTypingUnsubscribe = listenForTyping(db, currentChat.pathSegments, renderTypingIndicator);
   attachComposerListeners(canWrite);
 }
 
@@ -910,6 +991,7 @@ async function openProfileView(uid, fallbackUsername) {
   document.getElementById("profile-view-banner").style.backgroundColor = "#2a2a33";
   document.getElementById("profile-view-bio").textContent = "Loading...";
   document.getElementById("profile-view-gender").textContent = "Loading...";
+  document.getElementById("profile-view-badge-row").innerHTML = "";
   renderProfileViewActions(uid, fallbackUsername);
   modal.style.display = "flex";
 
@@ -918,6 +1000,7 @@ async function openProfileView(uid, fallbackUsername) {
     document.getElementById("profile-view-banner").style.backgroundColor = data.bannerColor || "#0000ff";
     document.getElementById("profile-view-bio").textContent = data.bio && data.bio.trim() ? data.bio : "No bio yet.";
     document.getElementById("profile-view-gender").textContent = data.gender && data.gender.trim() ? data.gender : "Not specified";
+    document.getElementById("profile-view-badge-row").innerHTML = renderBadgesHtml(data.badges);
     if (data.pfpUrl) {
       avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
       avatarEl.style.backgroundSize = "cover";
@@ -982,6 +1065,7 @@ document.querySelectorAll(".settings-tab").forEach((tab) => {
     tab.classList.add("active");
     const target = tab.dataset.settingsTab;
     document.getElementById("settings-display-panel").style.display = target === "display" ? "block" : "none";
+    document.getElementById("settings-quests-panel").style.display = target === "quests" ? "block" : "none";
     document.getElementById("settings-account-panel").style.display = target === "account" ? "block" : "none";
     document.getElementById("settings-security-panel").style.display = target === "security" ? "block" : "none";
   });
@@ -1130,6 +1214,10 @@ on("server-settings-btn", "click", () => {
   document.getElementById("server-settings-private").checked = !!currentServer.isPrivate;
   selectedServerBannerColor = currentServer.bannerColor || "#0000ff";
   buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
+  document.getElementById("server-tag-emoji").value = currentServer.tagEmoji || "";
+  document.getElementById("server-tag-word").value = currentServer.tagWord || "";
+  document.getElementById("server-custom-code").value = "";
+  document.getElementById("custom-code-message").textContent = "";
   document.getElementById("server-settings-message").textContent = "";
   document.getElementById("server-settings-modal-backdrop").style.display = "flex";
 });
@@ -1153,13 +1241,15 @@ on("save-server-settings-btn", "click", async () => {
     return;
   }
   const isPrivate = document.getElementById("server-settings-private").checked;
+  const tagEmoji = document.getElementById("server-tag-emoji").value.trim();
+  const tagWord = document.getElementById("server-tag-word").value.trim().toUpperCase();
   const saveBtn = document.getElementById("save-server-settings-btn");
   saveBtn.disabled = true;
   msg.textContent = "Saving...";
   msg.style.color = "#8a8fa3";
   try {
-    await updateServerSettings(db, currentServer.id, { name, isPrivate, bannerColor: selectedServerBannerColor });
-    currentServer = { ...currentServer, name, isPrivate, bannerColor: selectedServerBannerColor };
+    await updateServerSettings(db, currentServer.id, { name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord });
+    currentServer = { ...currentServer, name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord };
     renderServerHeader(currentServer, true);
     msg.textContent = "Saved!";
     msg.style.color = "#4ade80";
@@ -1171,6 +1261,28 @@ on("save-server-settings-btn", "click", async () => {
     msg.style.color = "#f87171";
   } finally {
     saveBtn.disabled = false;
+  }
+});
+
+on("set-custom-code-btn", "click", async () => {
+  if (!currentServer) return;
+  const code = document.getElementById("server-custom-code").value.trim();
+  const msg = document.getElementById("custom-code-message");
+  if (!code) return;
+  const btn = document.getElementById("set-custom-code-btn");
+  btn.disabled = true;
+  msg.textContent = "Setting...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const newCode = await setCustomJoinCode(db, currentServer.id, code);
+    currentServer = { ...currentServer, joinCode: newCode };
+    msg.textContent = `Invite code set to ${newCode}!`;
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -1213,6 +1325,7 @@ on("my-profile-settings-btn", "click", () => {
   document.getElementById("pfp-upload-message").textContent = "";
   renderPfpPreview();
   renderBlockedUsersList();
+  renderQuestsTab();
   document.getElementById("account-current-email").value = auth.currentUser ? auth.currentUser.email : "";
   document.getElementById("account-new-email").value = "";
   document.getElementById("account-new-password").value = "";
@@ -1223,6 +1336,7 @@ on("my-profile-settings-btn", "click", () => {
   document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
   document.querySelector('[data-settings-tab="display"]').classList.add("active");
   document.getElementById("settings-display-panel").style.display = "block";
+  document.getElementById("settings-quests-panel").style.display = "none";
   document.getElementById("settings-account-panel").style.display = "none";
   document.getElementById("settings-security-panel").style.display = "none";
   document.getElementById("settings-modal-backdrop").style.display = "flex";
@@ -1259,6 +1373,32 @@ on("pfp-file-input", "change", async (e) => {
     msg.textContent = err.message;
     msg.style.color = "#f87171";
   }
+});
+
+on("watch-ad-btn", "click", () => {
+  if (!canWatchAdToday()) return;
+  const btn = document.getElementById("watch-ad-btn");
+  btn.disabled = true;
+  let seconds = 5;
+  btn.textContent = `Loading ad... ${seconds}`;
+  const interval = setInterval(() => {
+    seconds -= 1;
+    if (seconds > 0) btn.textContent = `Loading ad... ${seconds}`;
+    else clearInterval(interval);
+  }, 1000);
+
+  setTimeout(async () => {
+    try {
+      await updateDoc(doc(db, "users", myUid), { credits: increment(50), lastAdWatch: serverTimestamp() });
+      myProfile = { ...myProfile, credits: (myProfile.credits || 0) + 50, lastAdWatch: { toDate: () => new Date() } };
+      renderQuestsTab();
+      showToast("+50 Credits!");
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Watch Ad";
+      alert(err.message);
+    }
+  }, 5000);
 });
 
 on("save-profile-btn", "click", async () => {
