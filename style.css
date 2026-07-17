@@ -219,3 +219,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed !important; }
 .delete-msg-btn { color: #8a8fa3; }
 .delete-msg-btn:hover { color: #ef4444; }
 #delete-server-btn { width: 100%; margin-top: 4px; }
+
+.profile-view-actions { display: flex; gap: 8px; margin-top: 4px; }
+.profile-action-btn { flex: 1; }
