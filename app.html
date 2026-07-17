@@ -16,13 +16,17 @@
     </div>
 
     <div class="sidebar">
+      <div class="sidebar-nav">
+        <button class="sidebar-nav-btn active" id="nav-friends-btn" data-nav="friends">Friends</button>
+        <button class="sidebar-nav-btn" id="nav-quests-btn" data-nav="quests">Quests</button>
+        <button class="sidebar-nav-btn" id="nav-discover-btn" data-nav="discover">Servers</button>
+      </div>
+
       <div id="friends-view">
-        <div class="sidebar-header">Friends</div>
-        <div class="add-friend-box">
-          <input type="text" id="add-friend-input" placeholder="Add friend by username">
-          <button id="add-friend-btn">Add</button>
+        <div class="sidebar-header-row">
+          <div class="sidebar-header">Friends</div>
+          <button class="add-channel-btn" id="open-add-friend-btn" title="Add friend">+</button>
         </div>
-        <p id="add-friend-message"></p>
         <div id="requests-section" class="requests-section" style="display:none;">
           <div class="section-label">Friend Requests</div>
           <div id="requests-list"></div>
@@ -31,6 +35,16 @@
         <div id="friends-list" class="friends-list">
           <p class="empty-sub">No friends yet. Add some above!</p>
         </div>
+      </div>
+
+      <div id="quests-nav-view" style="display:none;">
+        <div class="sidebar-header">Quests</div>
+        <p class="empty-sub">Check the main panel for your daily quest.</p>
+      </div>
+
+      <div id="discover-nav-view" style="display:none;">
+        <div class="sidebar-header">Discover</div>
+        <p class="empty-sub">Browse featured servers in the main panel.</p>
       </div>
 
       <div id="server-view" style="display:none;">
@@ -80,6 +94,18 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
+
+  <div id="add-friend-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-add-friend-modal-btn" class="close-modal-btn">✕</button>
+      <h3>Add Friend</h3>
+      <input type="text" id="add-friend-input" placeholder="Add friend by username">
+      <div class="button-row">
+        <button id="add-friend-btn">Add</button>
+      </div>
+      <p id="add-friend-message"></p>
+    </div>
+  </div>
 
   <div id="server-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
@@ -160,9 +186,19 @@
         <input type="checkbox" id="server-settings-private">
         Private (requires approval to join)
       </label>
+      <div class="section-label">Server Icon</div>
+      <div class="pfp-upload-row">
+        <div class="pfp-preview" id="server-icon-preview"></div>
+        <div>
+          <input type="file" id="server-icon-file-input" accept="image/*" style="display:none;">
+          <button type="button" id="server-icon-upload-btn" class="secondary small-btn">Change Icon</button>
+          <p id="server-icon-message" class="settings-note"></p>
+        </div>
+      </div>
       <div class="section-label">Banner Color</div>
       <div class="color-swatch-row" id="server-banner-swatches"></div>
       <button id="server-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+      <p class="settings-note">Image banners will be unlockable with 3 Lifts once Lifts exist.</p>
       <div class="section-label">Server Tag (emoji + up to 4 letters)</div>
       <div class="tag-row">
         <input type="text" id="server-tag-emoji" placeholder="🔥" maxlength="2">
@@ -174,6 +210,10 @@
         <button id="set-custom-code-btn" type="button" class="secondary small-btn">Set Code</button>
       </div>
       <p id="custom-code-message" class="settings-note"></p>
+      <label class="toggle-row" id="featured-toggle-row" style="display:none;">
+        <input type="checkbox" id="server-settings-featured">
+        Feature this server on the Discover page
+      </label>
       <div class="button-row">
         <button id="save-server-settings-btn">Save</button>
       </div>
@@ -189,7 +229,6 @@
       <h3>Settings</h3>
       <div class="modal-tabs">
         <button class="settings-tab active" data-settings-tab="display" type="button">Display</button>
-        <button class="settings-tab" data-settings-tab="quests" type="button">Quests</button>
         <button class="settings-tab" data-settings-tab="account" type="button">Account</button>
         <button class="settings-tab" data-settings-tab="security" type="button">Security</button>
       </div>
@@ -208,23 +247,12 @@
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+        <div class="section-label">Equipped Server Tag</div>
+        <select id="profile-equip-tag-select"></select>
         <div class="button-row">
           <button id="save-profile-btn">Save</button>
         </div>
         <p id="profile-edit-message"></p>
-      </div>
-
-      <div id="settings-quests-panel" class="modal-panel" style="display:none;">
-        <div class="credits-display">
-          <span class="credits-amount" id="credits-amount">0</span>
-          <span class="credits-label">Credits</span>
-        </div>
-        <div class="section-label">Daily Quest</div>
-        <div class="quest-card">
-          <p>Watch an ad for 50 Credits (once per day)</p>
-          <button id="watch-ad-btn" type="button">Watch Ad</button>
-        </div>
-        <p class="settings-note">More ways to earn and spend Credits are coming soon.</p>
       </div>
 
       <div id="settings-account-panel" class="modal-panel" style="display:none;">
