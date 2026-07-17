@@ -61,3 +61,25 @@ export function listenForFriends(db, myUid, callback) {
     callback(friends);
   });
 }
+
+export async function unfriendUser(db, friendshipIdValue) {
+  await deleteDoc(doc(db, "friendships", friendshipIdValue));
+}
+
+export async function blockUser(db, myUid, myUsername, targetUid, targetUsername) {
+  await setDoc(doc(db, "blocks", `${myUid}_${targetUid}`), {
+    blockerUid: myUid,
+    blockedUid: targetUid,
+    blockedUsername: targetUsername,
+    createdAt: serverTimestamp()
+  });
+}
+
+export async function unblockUser(db, myUid, targetUid) {
+  await deleteDoc(doc(db, "blocks", `${myUid}_${targetUid}`));
+}
+
+export function listenForBlockedUsers(db, myUid, callback) {
+  const q = query(collection(db, "blocks"), where("blockerUid", "==", myUid));
+  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => d.data())));
+}
