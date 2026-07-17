@@ -59,7 +59,10 @@
       <div class="profile-bar">
         <div class="avatar-circle" id="my-avatar" title="View profile"></div>
         <div class="profile-info">
-          <div class="profile-name" id="my-username">Loading...</div>
+          <div class="profile-name-row">
+            <div class="profile-name" id="my-username">Loading...</div>
+            <span class="badge-row" id="my-badge-row"></span>
+          </div>
           <div class="profile-status"><span class="status-dot"></span>Online</div>
         </div>
         <button id="my-profile-settings-btn" class="icon-btn" title="Settings"></button>
@@ -93,7 +96,7 @@
         </div>
       </div>
       <div id="join-panel" class="modal-panel" style="display:none;">
-        <input type="text" id="join-server-code" placeholder="Enter server code" maxlength="6">
+        <input type="text" id="join-server-code" placeholder="Enter server code" maxlength="10">
         <div class="button-row">
           <button id="join-server-btn">Join</button>
         </div>
@@ -160,6 +163,17 @@
       <div class="section-label">Banner Color</div>
       <div class="color-swatch-row" id="server-banner-swatches"></div>
       <button id="server-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+      <div class="section-label">Server Tag (emoji + up to 4 letters)</div>
+      <div class="tag-row">
+        <input type="text" id="server-tag-emoji" placeholder="🔥" maxlength="2">
+        <input type="text" id="server-tag-word" placeholder="WOLF" maxlength="4">
+      </div>
+      <div class="section-label">Custom Invite Code (4-10 characters)</div>
+      <div class="tag-row">
+        <input type="text" id="server-custom-code" placeholder="e.g. WOLFPACK" maxlength="10">
+        <button id="set-custom-code-btn" type="button" class="secondary small-btn">Set Code</button>
+      </div>
+      <p id="custom-code-message" class="settings-note"></p>
       <div class="button-row">
         <button id="save-server-settings-btn">Save</button>
       </div>
@@ -175,6 +189,7 @@
       <h3>Settings</h3>
       <div class="modal-tabs">
         <button class="settings-tab active" data-settings-tab="display" type="button">Display</button>
+        <button class="settings-tab" data-settings-tab="quests" type="button">Quests</button>
         <button class="settings-tab" data-settings-tab="account" type="button">Account</button>
         <button class="settings-tab" data-settings-tab="security" type="button">Security</button>
       </div>
@@ -197,6 +212,19 @@
           <button id="save-profile-btn">Save</button>
         </div>
         <p id="profile-edit-message"></p>
+      </div>
+
+      <div id="settings-quests-panel" class="modal-panel" style="display:none;">
+        <div class="credits-display">
+          <span class="credits-amount" id="credits-amount">0</span>
+          <span class="credits-label">Credits</span>
+        </div>
+        <div class="section-label">Daily Quest</div>
+        <div class="quest-card">
+          <p>Watch an ad for 50 Credits (once per day)</p>
+          <button id="watch-ad-btn" type="button">Watch Ad</button>
+        </div>
+        <p class="settings-note">More ways to earn and spend Credits are coming soon.</p>
       </div>
 
       <div id="settings-account-panel" class="modal-panel" style="display:none;">
@@ -233,7 +261,10 @@
       <button id="close-profile-view-btn" class="close-modal-btn">✕</button>
       <div class="profile-view-banner" id="profile-view-banner"></div>
       <div class="profile-view-avatar" id="profile-view-avatar"></div>
-      <div class="profile-view-username" id="profile-view-username"></div>
+      <div class="profile-view-username-row">
+        <div class="profile-view-username" id="profile-view-username"></div>
+        <span class="badge-row" id="profile-view-badge-row"></span>
+      </div>
       <div class="profile-view-field">
         <span class="profile-view-label">Bio</span>
         <p id="profile-view-bio" class="profile-view-value"></p>
