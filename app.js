@@ -3,10 +3,10 @@ import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, dele
 import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
-import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId } from './friends.js';
+import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId, unfriendUser, blockUser, unblockUser, listenForBlockedUsers } from './friends.js';
 import { listenForMessages, sendMessage, toggleReaction, markAsRead, deleteMessage } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
 
 const app = initializeApp(firebaseConfig);
@@ -17,6 +17,7 @@ let myUid = null;
 let myUsername = null;
 let myProfile = {};
 let myFriends = [];
+let myBlockedUsers = [];
 let currentChat = null;
 let currentServer = null;
 let editingChannel = null;
@@ -43,7 +44,8 @@ const ICONS = {
   share: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>`,
   lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
   power: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`,
-  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`
+  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
+  exit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`
 };
 
 function escapeHtml(str) {
@@ -96,6 +98,7 @@ function setIcon(id, svg) {
 function applyStaticIcons() {
   setIcon("server-invite-btn", ICONS.share);
   setIcon("server-settings-btn", ICONS.gear);
+  setIcon("server-leave-btn", ICONS.exit);
   setIcon("my-profile-settings-btn", ICONS.gear);
   setIcon("logout-btn", ICONS.power);
 }
@@ -167,6 +170,33 @@ function applyAvatarImage(el, uid) {
   });
 }
 
+function isBlocked(uid) {
+  return myBlockedUsers.some((b) => b.blockedUid === uid);
+}
+
+function renderBlockedUsersList() {
+  const list = document.getElementById("blocked-users-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (myBlockedUsers.length === 0) {
+    list.innerHTML = `<p class="empty-sub">No blocked users.</p>`;
+    return;
+  }
+  myBlockedUsers.forEach((b) => {
+    const item = document.createElement("div");
+    item.className = "friend-item";
+    item.innerHTML = `
+      <div class="avatar-circle small-avatar" style="background-color:${getAvatarColor(b.blockedUsername)}">${getInitial(b.blockedUsername)}</div>
+      <div class="friend-info"><span class="friend-name">${escapeHtml(b.blockedUsername)}</span></div>
+      <button class="invite-send-btn">Unblock</button>
+    `;
+    item.querySelector("button").addEventListener("click", async () => {
+      await unblockUser(db, myUid, b.blockedUid);
+    });
+    list.appendChild(item);
+  });
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -185,6 +215,10 @@ onAuthStateChanged(auth, async (user) => {
   listenForIncomingRequests(db, myUid, renderRequests);
   listenForFriends(db, myUid, renderFriends);
   listenForMyServers(db, myUid, renderServerRail);
+  listenForBlockedUsers(db, myUid, (blocked) => {
+    myBlockedUsers = blocked;
+    renderBlockedUsersList();
+  });
 
   const params = new URLSearchParams(window.location.search);
   const joinCode = params.get("join");
@@ -296,6 +330,7 @@ function renderServerHeader(server, isOwner) {
   document.getElementById("server-view-count").textContent = `${count} player${count === 1 ? "" : "s"}`;
   document.getElementById("server-banner").style.backgroundColor = server.bannerColor || "#0000ff";
   document.getElementById("server-settings-btn").style.display = isOwner ? "flex" : "none";
+  document.getElementById("server-leave-btn").style.display = isOwner ? "none" : "flex";
 }
 
 function selectServer(server) {
@@ -830,6 +865,41 @@ function buildColorSwatches(containerId, selectedColor, onSelect) {
   });
 }
 
+function renderProfileViewActions(uid, username) {
+  const container = document.getElementById("profile-view-actions");
+  container.innerHTML = "";
+  if (uid === myUid) return;
+
+  const isFriend = myFriends.some((f) => f.uid === uid);
+  const blocked = isBlocked(uid);
+
+  if (isFriend) {
+    const unfriendBtn = document.createElement("button");
+    unfriendBtn.className = "secondary small-btn profile-action-btn";
+    unfriendBtn.textContent = "Unfriend";
+    unfriendBtn.addEventListener("click", async () => {
+      if (!confirm(`Unfriend ${username}?`)) return;
+      await unfriendUser(db, friendshipId(myUid, uid));
+      document.getElementById("profile-view-modal-backdrop").style.display = "none";
+    });
+    container.appendChild(unfriendBtn);
+  }
+
+  const blockBtn = document.createElement("button");
+  blockBtn.className = blocked ? "secondary small-btn profile-action-btn" : "danger small-btn profile-action-btn";
+  blockBtn.textContent = blocked ? "Unblock" : "Block";
+  blockBtn.addEventListener("click", async () => {
+    if (blocked) {
+      await unblockUser(db, myUid, uid);
+    } else {
+      if (!confirm(`Block ${username}? They won't be able to message you.`)) return;
+      await blockUser(db, myUid, myUsername, uid, username);
+    }
+    document.getElementById("profile-view-modal-backdrop").style.display = "none";
+  });
+  container.appendChild(blockBtn);
+}
+
 async function openProfileView(uid, fallbackUsername) {
   const modal = document.getElementById("profile-view-modal-backdrop");
   document.getElementById("profile-view-username").textContent = fallbackUsername;
@@ -840,6 +910,7 @@ async function openProfileView(uid, fallbackUsername) {
   document.getElementById("profile-view-banner").style.backgroundColor = "#2a2a33";
   document.getElementById("profile-view-bio").textContent = "Loading...";
   document.getElementById("profile-view-gender").textContent = "Loading...";
+  renderProfileViewActions(uid, fallbackUsername);
   modal.style.display = "flex";
 
   try {
@@ -1122,6 +1193,17 @@ on("delete-server-btn", "click", async () => {
   }
 });
 
+on("server-leave-btn", "click", async () => {
+  if (!currentServer) return;
+  if (!confirm(`Leave "${currentServer.name}"?`)) return;
+  try {
+    await leaveServer(db, currentServer.id, myUid);
+    showFriendsView();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
   document.getElementById("profile-edit-gender").value = myProfile.gender || "";
@@ -1130,6 +1212,7 @@ on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-message").textContent = "";
   document.getElementById("pfp-upload-message").textContent = "";
   renderPfpPreview();
+  renderBlockedUsersList();
   document.getElementById("account-current-email").value = auth.currentUser ? auth.currentUser.email : "";
   document.getElementById("account-new-email").value = "";
   document.getElementById("account-new-password").value = "";
