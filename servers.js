@@ -61,6 +61,20 @@ export async function updateServerSettings(db, serverId, updates) {
   await updateDoc(doc(db, "servers", serverId), updates);
 }
 
+export async function setCustomJoinCode(db, serverId, code) {
+  const cleanCode = code.trim().toUpperCase();
+  if (cleanCode.length < 4 || cleanCode.length > 10) {
+    throw new Error("Custom code needs to be 4-10 characters.");
+  }
+  const q = query(collection(db, "servers"), where("joinCode", "==", cleanCode));
+  const snap = await getDocs(q);
+  if (!snap.empty && snap.docs[0].id !== serverId) {
+    throw new Error("That code is already taken. Try another.");
+  }
+  await updateDoc(doc(db, "servers", serverId), { joinCode: cleanCode });
+  return cleanCode;
+}
+
 export async function deleteServerEntirely(db, serverId) {
   const channelsSnap = await getDocs(collection(db, "servers", serverId, "channels"));
   for (const chDoc of channelsSnap.docs) {
