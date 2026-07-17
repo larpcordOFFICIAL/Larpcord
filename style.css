@@ -222,3 +222,24 @@ button:disabled { opacity: 0.5; cursor: not-allowed !important; }
 
 .profile-view-actions { display: flex; gap: 8px; margin-top: 4px; }
 .profile-action-btn { flex: 1; }
+
+.profile-name-row { display: flex; align-items: center; gap: 3px; }
+.badge-row { display: inline-flex; gap: 2px; }
+.badge-icon { font-size: 12px; }
+.profile-view-username-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 14px; }
+.profile-view-username-row .profile-view-username { margin-bottom: 0; }
+
+.server-tag { font-size: 11px; font-weight: 700; color: #8a8fa3; background-color: #1c1c22; padding: 2px 6px; border-radius: 6px; margin-left: 4px; }
+.tag-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.tag-row input:first-child { width: 60px; flex-shrink: 0; margin-bottom: 0; }
+.tag-row input:last-child { flex: 1; margin-bottom: 0; }
+.tag-row button { flex-shrink: 0; margin-bottom: 0; }
+
+.typing-indicator { padding: 4px 16px; font-size: 12px; color: #8a8fa3; font-style: italic; }
+
+.credits-display { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 16px 0; }
+.credits-amount { font-size: 36px; font-weight: 800; color: #ffffff; }
+.credits-label { font-size: 13px; color: #8a8fa3; text-transform: uppercase; letter-spacing: 0.5px; }
+.quest-card { background-color: #0a0a0f; border: 1px solid #2a2a33; border-radius: 10px; padding: 14px; text-align: center; margin-bottom: 14px; }
+.quest-card p { color: #d1d3db; font-size: 13px; margin-bottom: 10px; }
+.quest-card button { width: 100%; padding: 10px; border-radius: 8px; border: none; background-color: #0000ff; color: #ffffff; font-weight: 700; cursor: pointer; }
