@@ -72,3 +72,16 @@ export async function toggleReaction(db, pathSegments, messageId, emoji, uid) {
 export async function deleteMessage(db, pathSegments, messageId) {
   await deleteDoc(doc(db, ...pathSegments, "messages", messageId));
 }
+
+export async function setTyping(db, pathSegments, uid, username) {
+  await updateDoc(doc(db, ...pathSegments), {
+    [`typing.${uid}`]: { username, at: serverTimestamp() }
+  });
+}
+
+export function listenForTyping(db, pathSegments, callback) {
+  return onSnapshot(doc(db, ...pathSegments), (snap) => {
+    const data = snap.data() || {};
+    callback(data.typing || {});
+  });
+}
