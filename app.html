@@ -43,6 +43,7 @@
           </div>
           <button class="icon-btn" id="server-invite-btn" title="Invite people"></button>
           <button class="icon-btn" id="server-settings-btn" title="Server settings" style="display:none;"></button>
+          <button class="icon-btn" id="server-leave-btn" title="Leave server" style="display:none;"></button>
         </div>
         <div id="server-join-requests" class="requests-section" style="display:none;">
           <div class="section-label">Join Requests</div>
@@ -179,7 +180,7 @@
       </div>
 
       <div id="settings-display-panel" class="modal-panel">
-               <div class="pfp-upload-row">
+        <div class="pfp-upload-row">
           <div class="pfp-preview" id="pfp-preview"></div>
           <div>
             <input type="file" id="pfp-file-input" accept="image/*" style="display:none;">
@@ -187,13 +188,11 @@
             <p id="pfp-upload-message" class="settings-note"></p>
           </div>
         </div>
-
         <textarea id="profile-edit-bio" placeholder="Write a short bio..." maxlength="150" rows="3"></textarea>
         <input type="text" id="profile-edit-gender" placeholder="Gender (optional)">
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
-        <p class="settings-note">Profile pictures are coming once image uploads are set up.</p>
         <div class="button-row">
           <button id="save-profile-btn">Save</button>
         </div>
@@ -216,6 +215,8 @@
 
       <div id="settings-security-panel" class="modal-panel" style="display:none;">
         <p class="settings-note">Two-factor authentication and login activity are coming soon.</p>
+        <div class="section-label">Blocked Users</div>
+        <div id="blocked-users-list" class="friends-list" style="max-height:160px;"></div>
         <div class="section-label">Delete Account</div>
         <p class="settings-note">This permanently deletes your account and profile. This can't be undone.</p>
         <input type="password" id="delete-account-password" placeholder="Current password">
@@ -241,6 +242,7 @@
         <span class="profile-view-label">Gender</span>
         <p id="profile-view-gender" class="profile-view-value"></p>
       </div>
+      <div id="profile-view-actions" class="profile-view-actions"></div>
     </div>
   </div>
 
