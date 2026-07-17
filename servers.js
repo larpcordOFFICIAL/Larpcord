@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, deleteDoc, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { collection, doc, setDoc, deleteDoc, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
 
@@ -77,6 +77,13 @@ export async function deleteServerEntirely(db, serverId) {
   }
 
   await deleteDoc(doc(db, "servers", serverId));
+}
+
+export async function leaveServer(db, serverId, uid) {
+  await updateDoc(doc(db, "servers", serverId), {
+    members: arrayRemove(uid),
+    [`mentions.${uid}`]: 0
+  });
 }
 
 export async function markChannelRead(db, serverId, channelId, uid) {
