@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId, unfriendUser, blockUser, unblockUser, listenForBlockedUsers } from './friends.js';
@@ -50,7 +50,9 @@ const ICONS = {
   lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
   power: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`,
   trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
-  exit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`
+  exit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`,
+  people: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
+  gem: `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"></path><path d="M2 9h20"></path><path d="M9 3 8 9l4 12 4-12-1-6"></path></svg>`
 };
 
 function escapeHtml(str) {
@@ -101,6 +103,7 @@ function setIcon(id, svg) {
 }
 
 function applyStaticIcons() {
+  setIcon("rail-home-btn", ICONS.people);
   setIcon("server-invite-btn", ICONS.share);
   setIcon("server-settings-btn", ICONS.gear);
   setIcon("server-leave-btn", ICONS.exit);
@@ -274,14 +277,16 @@ function renderTypingIndicator(typingMap) {
   }
 }
 
-// ---------- Sidebar nav (Friends / Quests / Servers) ----------
+// ---------- Sidebar nav (rail Friends icon + Quests / Shop / Servers) ----------
 
 function switchSidebarNav(target) {
   document.querySelectorAll(".sidebar-nav-btn").forEach((b) => b.classList.remove("active"));
-  document.querySelector(`.sidebar-nav-btn[data-nav="${target}"]`).classList.add("active");
+  const btn = document.querySelector(`.sidebar-nav-btn[data-nav="${target}"]`);
+  if (btn) btn.classList.add("active");
 
   document.getElementById("friends-view").style.display = target === "friends" ? "block" : "none";
   document.getElementById("quests-nav-view").style.display = target === "quests" ? "block" : "none";
+  document.getElementById("shop-nav-view").style.display = target === "shop" ? "block" : "none";
   document.getElementById("discover-nav-view").style.display = target === "discover" ? "block" : "none";
   document.getElementById("server-view").style.display = "none";
   currentServer = null;
@@ -300,30 +305,33 @@ function switchSidebarNav(target) {
     `;
   } else if (target === "quests") {
     renderQuestsMain();
+  } else if (target === "shop") {
+    renderShopMain();
   } else if (target === "discover") {
     renderDiscoverMain();
   }
 }
 
-on("nav-friends-btn", "click", () => switchSidebarNav("friends"));
-on("nav-quests-btn", "click", () => switchSidebarNav("quests"));
-on("nav-discover-btn", "click", () => switchSidebarNav("discover"));
 on("rail-home-btn", "click", () => switchSidebarNav("friends"));
+on("nav-quests-btn", "click", () => switchSidebarNav("quests"));
+on("nav-shop-btn", "click", () => switchSidebarNav("shop"));
+on("nav-discover-btn", "click", () => switchSidebarNav("discover"));
 
 function renderQuestsMain() {
   const canWatch = canWatchAdToday();
   document.getElementById("main-area").innerHTML = `
-    <div class="quests-main">
+    <div class="quests-hero-wrap">
+      <div class="quests-hero-card">
+        <div class="quest-hero-icon">🎬</div>
+        <div class="quest-hero-title">Watch Advertisement</div>
+        <div class="quest-hero-reward-badge">+50 Credits</div>
+        <p class="quest-hero-desc">Support the development of LarpCord by watching a short advertisement.</p>
+        <button id="watch-ad-btn" type="button" class="quest-hero-btn" ${canWatch ? "" : "disabled"}>${canWatch ? "Watch Ad" : "Come back tomorrow"}</button>
+      </div>
       <div class="credits-display">
         <span class="credits-amount">${myProfile.credits || 0}</span>
-        <span class="credits-label">Credits</span>
+        <span class="credits-label">Your Credits</span>
       </div>
-      <div class="section-label">Daily Quest</div>
-      <div class="quest-card">
-        <p>Watch an ad for 50 Credits (once per day)</p>
-        <button id="watch-ad-btn" type="button" ${canWatch ? "" : "disabled"}>${canWatch ? "Watch Ad" : "Come back tomorrow"}</button>
-      </div>
-      <p class="settings-note">More ways to earn and spend Credits are coming soon.</p>
     </div>
   `;
   on("watch-ad-btn", "click", handleWatchAd);
@@ -331,28 +339,88 @@ function renderQuestsMain() {
 
 function handleWatchAd() {
   if (!canWatchAdToday()) return;
-  const btn = document.getElementById("watch-ad-btn");
-  btn.disabled = true;
-  let seconds = 5;
-  btn.textContent = `Loading ad... ${seconds}`;
-  const interval = setInterval(() => {
-    seconds -= 1;
-    if (seconds > 0) btn.textContent = `Loading ad... ${seconds}`;
-    else clearInterval(interval);
-  }, 1000);
+  const overlay = document.getElementById("quest-ad-overlay");
+  const adContent = document.getElementById("quest-ad-content");
+  const completeContent = document.getElementById("quest-complete-content");
+  adContent.style.display = "flex";
+  completeContent.style.display = "none";
+  overlay.style.display = "flex";
 
-  setTimeout(async () => {
-    try {
-      await updateDoc(doc(db, "users", myUid), { credits: increment(50), lastAdWatch: serverTimestamp() });
-      myProfile = { ...myProfile, credits: (myProfile.credits || 0) + 50, lastAdWatch: { toDate: () => new Date() } };
-      renderQuestsMain();
-      showToast("+50 Credits!");
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = "Watch Ad";
-      alert(err.message);
-    }
+  const fill = document.getElementById("quest-ad-progress-fill");
+  fill.style.transition = "none";
+  fill.style.width = "0%";
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      fill.style.transition = "width 5s linear";
+      fill.style.width = "100%";
+    });
+  });
+
+  setTimeout(() => {
+    adContent.style.display = "none";
+    completeContent.style.display = "flex";
+    completeContent.classList.remove("quest-complete-pop");
+    void completeContent.offsetWidth;
+    completeContent.classList.add("quest-complete-pop");
   }, 5000);
+}
+
+on("collect-reward-btn", "click", async () => {
+  const overlay = document.getElementById("quest-ad-overlay");
+  const btn = document.getElementById("collect-reward-btn");
+  btn.disabled = true;
+  try {
+    await updateDoc(doc(db, "users", myUid), { credits: increment(50), lastAdWatch: serverTimestamp() });
+    myProfile = { ...myProfile, credits: (myProfile.credits || 0) + 50, lastAdWatch: { toDate: () => new Date() } };
+    showToast("+50 Credits!");
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    overlay.style.display = "none";
+    renderQuestsMain();
+  }
+});
+
+function renderShopMain() {
+  document.getElementById("main-area").innerHTML = `
+    <div class="shop-main">
+      <div class="empty-logo" style="font-size:24px; margin-bottom: 16px;">Shop</div>
+
+      <div class="turbo-hero-card">
+        <div class="turbo-hero-icon">${ICONS.gem}</div>
+        <div class="turbo-hero-title">TURBO</div>
+        <p class="turbo-hero-desc">Unlock premium cosmetics, extra Lifts for your favorite servers, and more ways to stand out on LarpCord.</p>
+        <ul class="turbo-perks-list">
+          <li>Exclusive profile & bio effects</li>
+          <li>Animated name tag</li>
+          <li>Lifts for the servers you love</li>
+          <li>Custom image banners</li>
+        </ul>
+        <button class="turbo-upgrade-btn" disabled>Coming Soon</button>
+      </div>
+
+      <div class="section-label" style="text-align:center;">Credits Packages</div>
+      <div class="credits-packages">
+        <div class="credit-package-card">
+          <div class="credit-package-amount">500</div>
+          <div class="credit-package-label">Credits</div>
+          <button disabled>Coming Soon</button>
+        </div>
+        <div class="credit-package-card">
+          <div class="credit-package-amount">1,200</div>
+          <div class="credit-package-label">Credits</div>
+          <button disabled>Coming Soon</button>
+        </div>
+        <div class="credit-package-card">
+          <div class="credit-package-amount">2,600</div>
+          <div class="credit-package-label">Credits</div>
+          <button disabled>Coming Soon</button>
+        </div>
+      </div>
+      <p class="settings-note" style="text-align:center;">Purchases aren't available yet — for now, earn Credits from Quests.</p>
+    </div>
+  `;
 }
 
 async function renderDiscoverMain() {
@@ -577,6 +645,7 @@ function selectServer(server) {
   document.querySelectorAll(".sidebar-nav-btn").forEach((b) => b.classList.remove("active"));
   document.getElementById("friends-view").style.display = "none";
   document.getElementById("quests-nav-view").style.display = "none";
+  document.getElementById("shop-nav-view").style.display = "none";
   document.getElementById("discover-nav-view").style.display = "none";
   currentServer = server;
   document.getElementById("server-view").style.display = "block";
@@ -992,6 +1061,7 @@ function attachComposerListeners(canWrite) {
 }
 
 function openChat(friend) {
+  document.querySelectorAll(".sidebar-nav-btn").forEach((b) => b.classList.remove("active"));
   replyingTo = null;
   const fsId = friendshipId(myUid, friend.uid);
   currentChat = { type: "dm", pathSegments: ["friendships", fsId], recipientUid: friend.uid };
@@ -1109,13 +1179,19 @@ function buildColorSwatches(containerId, selectedColor, onSelect) {
   });
 }
 
-function renderProfileViewActions(uid, username) {
+function renderProfileViewActions(uid, username, dmPrivacy) {
   const container = document.getElementById("profile-view-actions");
   container.innerHTML = "";
   if (uid === myUid) return;
 
   const isFriend = myFriends.some((f) => f.uid === uid);
   const blocked = isBlocked(uid);
+
+  const messageBtn = document.createElement("button");
+  messageBtn.className = "secondary small-btn profile-action-btn";
+  messageBtn.textContent = "Message";
+  messageBtn.addEventListener("click", () => startDirectMessage(uid, username, dmPrivacy, isFriend));
+  container.appendChild(messageBtn);
 
   if (isFriend) {
     const unfriendBtn = document.createElement("button");
@@ -1144,6 +1220,37 @@ function renderProfileViewActions(uid, username) {
   container.appendChild(blockBtn);
 }
 
+async function startDirectMessage(targetUid, targetUsername, dmPrivacy, isFriend) {
+  if (isFriend) {
+    document.getElementById("profile-view-modal-backdrop").style.display = "none";
+    openChat({ uid: targetUid, username: targetUsername });
+    return;
+  }
+  const privacy = dmPrivacy || "friends";
+  if (privacy === "nobody") {
+    showToast(`${targetUsername} isn't accepting messages right now.`);
+    return;
+  }
+  if (privacy === "friends") {
+    showToast(`${targetUsername} only accepts messages from friends.`);
+    return;
+  }
+  try {
+    const fsId = friendshipId(myUid, targetUid);
+    await setDoc(doc(db, "friendships", fsId), {
+      members: [myUid, targetUid],
+      usernames: { [myUid]: myUsername, [targetUid]: targetUsername },
+      unread: { [myUid]: 0, [targetUid]: 0 },
+      createdAt: serverTimestamp(),
+      isDmOnly: true
+    });
+    document.getElementById("profile-view-modal-backdrop").style.display = "none";
+    openChat({ uid: targetUid, username: targetUsername });
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 async function openProfileView(uid, fallbackUsername) {
   const modal = document.getElementById("profile-view-modal-backdrop");
   document.getElementById("profile-view-username").textContent = fallbackUsername;
@@ -1155,7 +1262,7 @@ async function openProfileView(uid, fallbackUsername) {
   document.getElementById("profile-view-bio").textContent = "Loading...";
   document.getElementById("profile-view-gender").textContent = "Loading...";
   document.getElementById("profile-view-badge-row").innerHTML = "";
-  renderProfileViewActions(uid, fallbackUsername);
+  document.getElementById("profile-view-actions").innerHTML = "";
   modal.style.display = "flex";
 
   try {
@@ -1170,6 +1277,7 @@ async function openProfileView(uid, fallbackUsername) {
         handleTagClick(tagEl.dataset.serverId, tagEl.dataset.joinCode);
       });
     });
+    renderProfileViewActions(uid, fallbackUsername, data.dmPrivacy);
     if (data.pfpUrl) {
       avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
       avatarEl.style.backgroundSize = "cover";
@@ -1557,6 +1665,7 @@ function populateEquipTagSelect() {
 on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
   document.getElementById("profile-edit-gender").value = myProfile.gender || "";
+  document.getElementById("profile-dm-privacy").value = myProfile.dmPrivacy || "friends";
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
   populateEquipTagSelect();
@@ -1615,6 +1724,7 @@ on("pfp-file-input", "change", async (e) => {
 on("save-profile-btn", "click", async () => {
   const bio = document.getElementById("profile-edit-bio").value.trim();
   const gender = document.getElementById("profile-edit-gender").value.trim();
+  const dmPrivacy = document.getElementById("profile-dm-privacy").value;
   const selectedServerId = document.getElementById("profile-equip-tag-select").value;
   const msg = document.getElementById("profile-edit-message");
   const saveBtn = document.getElementById("save-profile-btn");
@@ -1629,8 +1739,8 @@ on("save-profile-btn", "click", async () => {
   }
 
   try {
-    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag });
-    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag };
+    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy });
+    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy };
     renderMyBadgeRow();
     msg.textContent = "Saved!";
     msg.style.color = "#4ade80";
