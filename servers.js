@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, deleteDoc, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, arrayRemove, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { collection, doc, setDoc, deleteDoc, deleteField, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, arrayRemove, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
 
@@ -7,6 +7,10 @@ function randomCode() {
   let code = "";
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
+}
+
+function randomId() {
+  return Math.random().toString(36).slice(2, 10);
 }
 
 function randomBannerColor() {
@@ -25,6 +29,10 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
     bannerColor: randomBannerColor(),
     members: [ownerUid],
     memberUsernames: { [ownerUid]: ownerUsername },
+    categories: {},
+    roles: {},
+    memberRoles: {},
+    timeouts: {},
     createdAt: serverTimestamp()
   });
 
@@ -39,6 +47,7 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
       name: ch.name,
       type: ch.type,
       locked: ch.locked,
+      categoryId: null,
       createdAt: serverTimestamp()
     });
   }
@@ -46,12 +55,13 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
   return { id: serverRef.id, joinCode };
 }
 
-export async function createChannel(db, serverId, name, locked = false) {
+export async function createChannel(db, serverId, name, locked = false, categoryId = null) {
   const chRef = doc(collection(db, "servers", serverId, "channels"));
   await setDoc(chRef, {
     name: name.trim(),
     type: "general",
     locked,
+    categoryId: categoryId || null,
     createdAt: serverTimestamp()
   });
   return chRef.id;
@@ -174,4 +184,69 @@ export async function updateChannel(db, serverId, channelId, updates) {
 
 export async function deleteChannelDoc(db, serverId, channelId) {
   await deleteDoc(doc(db, "servers", serverId, "channels", channelId));
+}
+
+// ---------- Categories ----------
+
+export async function createCategory(db, serverId, name) {
+  const id = randomId();
+  await updateDoc(doc(db, "servers", serverId), {
+    [`categories.${id}`]: { name: name.trim() }
+  });
+  return id;
+}
+
+export async function renameCategory(db, serverId, categoryId, name) {
+  await updateDoc(doc(db, "servers", serverId), {
+    [`categories.${categoryId}.name`]: name.trim()
+  });
+}
+
+export async function deleteCategory(db, serverId, categoryId) {
+  await updateDoc(doc(db, "servers", serverId), {
+    [`categories.${categoryId}`]: deleteField()
+  });
+}
+
+export async function moveChannelToCategory(db, serverId, channelId, categoryId) {
+  await updateChannel(db, serverId, channelId, { categoryId: categoryId || null });
+}
+
+// ---------- Roles ----------
+
+export async function createRole(db, serverId, name, color, perms) {
+  const id = randomId();
+  await updateDoc(doc(db, "servers", serverId), {
+    [`roles.${id}`]: { name: name.trim(), color, perms }
+  });
+  return id;
+}
+
+export async function updateRole(db, serverId, roleId, name, color, perms) {
+  await updateDoc(doc(db, "servers", serverId), {
+    [`roles.${roleId}`]: { name: name.trim(), color, perms }
+  });
+}
+
+export async function deleteRole(db, serverId, roleId) {
+  await updateDoc(doc(db, "servers", serverId), {
+    [`roles.${roleId}`]: deleteField()
+  });
+}
+
+export async function assignMemberRole(db, serverId, uid, roleId) {
+  if (roleId) {
+    await updateDoc(doc(db, "servers", serverId), { [`memberRoles.${uid}`]: roleId });
+  } else {
+    await updateDoc(doc(db, "servers", serverId), { [`memberRoles.${uid}`]: deleteField() });
+  }
+}
+
+export async function timeoutMember(db, serverId, uid, minutes) {
+  const until = Timestamp.fromDate(new Date(Date.now() + minutes * 60000));
+  await updateDoc(doc(db, "servers", serverId), { [`timeouts.${uid}`]: until });
+}
+
+export async function removeTimeout(db, serverId, uid) {
+  await updateDoc(doc(db, "servers", serverId), { [`timeouts.${uid}`]: deleteField() });
 }
