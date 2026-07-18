@@ -12,7 +12,8 @@ export async function sendMessage(db, pathSegments, senderId, senderUsername, te
     senderId,
     senderUsername,
     createdAt: serverTimestamp(),
-    reactions: {}
+    reactions: {},
+    superReactions: {}
   };
   if (gifUrl) messageData.gifUrl = gifUrl;
   if (inviteData) messageData.invite = inviteData;
@@ -66,6 +67,19 @@ export async function toggleReaction(db, pathSegments, messageId, emoji, uid) {
     await updateDoc(msgRef, { [`reactions.${emoji}`]: arrayRemove(uid) });
   } else {
     await updateDoc(msgRef, { [`reactions.${emoji}`]: arrayUnion(uid) });
+  }
+}
+
+export async function toggleSuperReaction(db, pathSegments, messageId, emoji, uid) {
+  const msgRef = doc(db, ...pathSegments, "messages", messageId);
+  const snap = await getDoc(msgRef);
+  const superReactions = (snap.data() && snap.data().superReactions) || {};
+  const current = superReactions[emoji] || [];
+
+  if (current.includes(uid)) {
+    await updateDoc(msgRef, { [`superReactions.${emoji}`]: arrayRemove(uid) });
+  } else {
+    await updateDoc(msgRef, { [`superReactions.${emoji}`]: arrayUnion(uid) });
   }
 }
 
