@@ -10,15 +10,15 @@
   <div class="app-container">
 
     <div class="server-rail">
-      <div class="rail-icon rail-home" id="rail-home-btn" title="Larpcord">L</div>
+      <div class="rail-icon rail-home" id="rail-home-btn" title="Friends"></div>
       <div id="server-list"></div>
       <div class="rail-icon rail-add" id="rail-add-btn" title="Create or Join a Server">+</div>
     </div>
 
     <div class="sidebar">
       <div class="sidebar-nav">
-        <button class="sidebar-nav-btn active" id="nav-friends-btn" data-nav="friends">Friends</button>
         <button class="sidebar-nav-btn" id="nav-quests-btn" data-nav="quests">Quests</button>
+        <button class="sidebar-nav-btn" id="nav-shop-btn" data-nav="shop">Shop</button>
         <button class="sidebar-nav-btn" id="nav-discover-btn" data-nav="discover">Servers</button>
       </div>
 
@@ -40,6 +40,11 @@
       <div id="quests-nav-view" style="display:none;">
         <div class="sidebar-header">Quests</div>
         <p class="empty-sub">Check the main panel for your daily quest.</p>
+      </div>
+
+      <div id="shop-nav-view" style="display:none;">
+        <div class="sidebar-header">Shop</div>
+        <p class="empty-sub">Check the main panel for Turbo and Credits.</p>
       </div>
 
       <div id="discover-nav-view" style="display:none;">
@@ -94,6 +99,21 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
+
+  <div id="quest-ad-overlay" class="quest-ad-overlay" style="display:none;">
+    <div class="quest-ad-content" id="quest-ad-content">
+      <div class="quest-ad-question">?</div>
+      <div class="quest-ad-logo">LarpCord</div>
+      <div class="quest-ad-subtitle">Coming Soon...</div>
+      <div class="quest-ad-progress-track"><div class="quest-ad-progress-fill" id="quest-ad-progress-fill"></div></div>
+    </div>
+    <div class="quest-complete-content" id="quest-complete-content" style="display:none;">
+      <div class="quest-complete-icon">✓</div>
+      <div class="quest-complete-title">Quest Complete!</div>
+      <div class="quest-complete-reward">+50 Credits</div>
+      <button id="collect-reward-btn">Collect</button>
+    </div>
+  </div>
 
   <div id="add-friend-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
@@ -249,6 +269,12 @@
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
         <div class="section-label">Equipped Server Tag</div>
         <select id="profile-equip-tag-select"></select>
+        <div class="section-label">Who Can DM Me</div>
+        <select id="profile-dm-privacy">
+          <option value="everyone">Everyone</option>
+          <option value="friends">Friends Only</option>
+          <option value="nobody">Nobody</option>
+        </select>
         <div class="button-row">
           <button id="save-profile-btn">Save</button>
         </div>
