@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId, unfriendUser, blockUser, unblockUser, listenForBlockedUsers } from './friends.js';
@@ -18,6 +18,7 @@ let myUsername = null;
 let myProfile = {};
 let myFriends = [];
 let myBlockedUsers = [];
+let myServers = [];
 let currentChat = null;
 let currentServer = null;
 let editingChannel = null;
@@ -32,6 +33,7 @@ let selectedProfileBannerColor = null;
 let previousMentions = {};
 let mentionsInitialized = false;
 let typingThrottle = 0;
+let editingServerIconUrl = null;
 const userExtraCache = {};
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
@@ -136,7 +138,9 @@ function renderMyAvatar() {
 
 function renderMyBadgeRow() {
   const el = document.getElementById("my-badge-row");
-  if (el) el.innerHTML = renderBadgesHtml(myProfile.badges);
+  const badgesHtml = renderBadgesHtml(myProfile.badges);
+  const tagHtml = myProfile.equippedTag ? renderEquippedTagHtml(myProfile.equippedTag) : "";
+  if (el) el.innerHTML = badgesHtml + tagHtml;
 }
 
 function renderPfpPreview() {
@@ -159,15 +163,20 @@ function renderBadgesHtml(badges) {
   return badges.map((b) => `<span class="badge-icon" title="${b}">${BADGE_ICONS[b] || ""}</span>`).join("");
 }
 
+function renderEquippedTagHtml(tag) {
+  if (!tag || !tag.serverId) return "";
+  return `<span class="equipped-tag" data-server-id="${tag.serverId}" data-join-code="${tag.joinCode || ""}" title="Click to join">${escapeHtml(tag.tagEmoji || "")}${escapeHtml(tag.tagWord || "")}</span>`;
+}
+
 async function getCachedUserExtra(uid) {
-  if (uid === myUid) return { pfpUrl: myProfile.pfpUrl || null, badges: myProfile.badges || [] };
+  if (uid === myUid) return { pfpUrl: myProfile.pfpUrl || null, badges: myProfile.badges || [], equippedTag: myProfile.equippedTag || null };
   if (uid in userExtraCache) return userExtraCache[uid];
   try {
     const snap = await getDoc(doc(db, "users", uid));
     const d = snap.exists() ? snap.data() : {};
-    userExtraCache[uid] = { pfpUrl: d.pfpUrl || null, badges: d.badges || [] };
+    userExtraCache[uid] = { pfpUrl: d.pfpUrl || null, badges: d.badges || [], equippedTag: d.equippedTag || null };
   } catch (err) {
-    userExtraCache[uid] = { pfpUrl: null, badges: [] };
+    userExtraCache[uid] = { pfpUrl: null, badges: [], equippedTag: null };
   }
   return userExtraCache[uid];
 }
@@ -187,8 +196,29 @@ function applyAvatarImage(el, uid) {
 function applyBadges(el, uid) {
   if (!el || !uid) return;
   getCachedUserExtra(uid).then((extra) => {
-    el.innerHTML = renderBadgesHtml(extra.badges);
+    el.innerHTML = renderBadgesHtml(extra.badges) + renderEquippedTagHtml(extra.equippedTag);
+    el.querySelectorAll(".equipped-tag").forEach((tagEl) => {
+      tagEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handleTagClick(tagEl.dataset.serverId, tagEl.dataset.joinCode);
+      });
+    });
   });
+}
+
+async function handleTagClick(serverId, joinCode) {
+  if (currentServer && currentServer.id === serverId) return;
+  if (myServers.some((s) => s.id === serverId)) {
+    showToast("You're already in this server.");
+    return;
+  }
+  if (!confirm("Join this server?")) return;
+  try {
+    const result = await joinServerByCode(db, myUid, myUsername, joinCode);
+    showToast(result.requested ? "Join request sent!" : `Joined "${result.serverName}"!`);
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 function isBlocked(uid) {
@@ -224,20 +254,6 @@ function canWatchAdToday() {
   return last.toDateString() !== new Date().toDateString();
 }
 
-function renderQuestsTab() {
-  const amountEl = document.getElementById("credits-amount");
-  if (amountEl) amountEl.textContent = myProfile.credits || 0;
-  const btn = document.getElementById("watch-ad-btn");
-  if (!btn) return;
-  if (canWatchAdToday()) {
-    btn.disabled = false;
-    btn.textContent = "Watch Ad";
-  } else {
-    btn.disabled = true;
-    btn.textContent = "Come back tomorrow";
-  }
-}
-
 function renderTypingIndicator(typingMap) {
   const el = document.getElementById("typing-indicator");
   if (!el) return;
@@ -255,6 +271,154 @@ function renderTypingIndicator(typingMap) {
   } else {
     el.textContent = `${names.join(", ")} are typing...`;
     el.style.display = "block";
+  }
+}
+
+// ---------- Sidebar nav (Friends / Quests / Servers) ----------
+
+function switchSidebarNav(target) {
+  document.querySelectorAll(".sidebar-nav-btn").forEach((b) => b.classList.remove("active"));
+  document.querySelector(`.sidebar-nav-btn[data-nav="${target}"]`).classList.add("active");
+
+  document.getElementById("friends-view").style.display = target === "friends" ? "block" : "none";
+  document.getElementById("quests-nav-view").style.display = target === "quests" ? "block" : "none";
+  document.getElementById("discover-nav-view").style.display = target === "discover" ? "block" : "none";
+  document.getElementById("server-view").style.display = "none";
+  currentServer = null;
+  if (currentChannelsUnsubscribe) { currentChannelsUnsubscribe(); currentChannelsUnsubscribe = null; }
+  if (currentJoinRequestsUnsubscribe) { currentJoinRequestsUnsubscribe(); currentJoinRequestsUnsubscribe = null; }
+  if (currentMessagesUnsubscribe) { currentMessagesUnsubscribe(); currentMessagesUnsubscribe = null; }
+  if (currentTypingUnsubscribe) { currentTypingUnsubscribe(); currentTypingUnsubscribe = null; }
+  currentChat = null;
+
+  if (target === "friends") {
+    document.getElementById("main-area").innerHTML = `
+      <div class="empty-main">
+        <div class="empty-logo">Larpcord</div>
+        <p>Add friends to start chatting</p>
+      </div>
+    `;
+  } else if (target === "quests") {
+    renderQuestsMain();
+  } else if (target === "discover") {
+    renderDiscoverMain();
+  }
+}
+
+on("nav-friends-btn", "click", () => switchSidebarNav("friends"));
+on("nav-quests-btn", "click", () => switchSidebarNav("quests"));
+on("nav-discover-btn", "click", () => switchSidebarNav("discover"));
+on("rail-home-btn", "click", () => switchSidebarNav("friends"));
+
+function renderQuestsMain() {
+  const canWatch = canWatchAdToday();
+  document.getElementById("main-area").innerHTML = `
+    <div class="quests-main">
+      <div class="credits-display">
+        <span class="credits-amount">${myProfile.credits || 0}</span>
+        <span class="credits-label">Credits</span>
+      </div>
+      <div class="section-label">Daily Quest</div>
+      <div class="quest-card">
+        <p>Watch an ad for 50 Credits (once per day)</p>
+        <button id="watch-ad-btn" type="button" ${canWatch ? "" : "disabled"}>${canWatch ? "Watch Ad" : "Come back tomorrow"}</button>
+      </div>
+      <p class="settings-note">More ways to earn and spend Credits are coming soon.</p>
+    </div>
+  `;
+  on("watch-ad-btn", "click", handleWatchAd);
+}
+
+function handleWatchAd() {
+  if (!canWatchAdToday()) return;
+  const btn = document.getElementById("watch-ad-btn");
+  btn.disabled = true;
+  let seconds = 5;
+  btn.textContent = `Loading ad... ${seconds}`;
+  const interval = setInterval(() => {
+    seconds -= 1;
+    if (seconds > 0) btn.textContent = `Loading ad... ${seconds}`;
+    else clearInterval(interval);
+  }, 1000);
+
+  setTimeout(async () => {
+    try {
+      await updateDoc(doc(db, "users", myUid), { credits: increment(50), lastAdWatch: serverTimestamp() });
+      myProfile = { ...myProfile, credits: (myProfile.credits || 0) + 50, lastAdWatch: { toDate: () => new Date() } };
+      renderQuestsMain();
+      showToast("+50 Credits!");
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Watch Ad";
+      alert(err.message);
+    }
+  }, 5000);
+}
+
+async function renderDiscoverMain() {
+  document.getElementById("main-area").innerHTML = `
+    <div class="discover-main">
+      <div class="empty-logo" style="font-size:24px;">Discover Servers</div>
+      <p class="settings-note" style="text-align:center;">Loading featured servers...</p>
+    </div>
+  `;
+
+  try {
+    const q = query(collection(db, "servers"), where("featured", "==", true), limit(20));
+    const snap = await getDocs(q);
+    const servers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const container = document.querySelector(".discover-main");
+
+    if (servers.length === 0) {
+      container.innerHTML = `
+        <div class="empty-logo" style="font-size:24px;">Discover Servers</div>
+        <p class="settings-note" style="text-align:center;">No featured servers yet — check back soon!</p>
+      `;
+      return;
+    }
+
+    container.innerHTML = `<div class="empty-logo" style="font-size:24px;">Discover Servers</div>`;
+    servers.forEach((server) => {
+      const alreadyIn = myServers.some((s) => s.id === server.id);
+      const card = document.createElement("div");
+      card.className = "discover-card";
+      card.innerHTML = `
+        <div class="discover-banner" style="background-color:${server.bannerColor || "#0000ff"};"></div>
+        <div class="discover-card-body">
+          <div class="discover-icon" id="discover-icon-${server.id}">${getInitial(server.name)}</div>
+          <div class="discover-info">
+            <div class="discover-name">${escapeHtml(server.name)}${server.tagWord ? ` <span class="server-tag">${escapeHtml(server.tagEmoji || "")}${escapeHtml(server.tagWord)}</span>` : ""}</div>
+            <div class="discover-count">${(server.members || []).length} player${(server.members || []).length === 1 ? "" : "s"}</div>
+          </div>
+          <button class="discover-join-btn" ${alreadyIn ? "disabled" : ""}>${alreadyIn ? "Joined" : "Join"}</button>
+        </div>
+      `;
+      const iconEl = card.querySelector(`#discover-icon-${server.id}`);
+      iconEl.style.backgroundColor = getAvatarColor(server.name);
+      if (server.iconUrl) {
+        iconEl.style.backgroundImage = `url(${server.iconUrl})`;
+        iconEl.style.backgroundSize = "cover";
+        iconEl.style.backgroundPosition = "center";
+        iconEl.textContent = "";
+      }
+      if (!alreadyIn) {
+        card.querySelector(".discover-join-btn").addEventListener("click", async (e) => {
+          e.target.disabled = true;
+          e.target.textContent = "Joining...";
+          try {
+            const result = await joinServerByCode(db, myUid, myUsername, server.joinCode);
+            e.target.textContent = result.requested ? "Requested!" : "Joined!";
+          } catch (err) {
+            e.target.disabled = false;
+            e.target.textContent = "Join";
+            alert(err.message);
+          }
+        });
+      }
+      container.appendChild(card);
+    });
+  } catch (err) {
+    document.querySelector(".discover-main").innerHTML = `<p class="settings-note">Couldn't load servers.</p>`;
   }
 }
 
@@ -352,6 +516,7 @@ function renderFriends(friends) {
 }
 
 function renderServerRail(servers) {
+  myServers = servers;
   const rail = document.getElementById("server-list");
   rail.innerHTML = "";
   servers.forEach((server) => {
@@ -361,7 +526,13 @@ function renderServerRail(servers) {
     const icon = document.createElement("div");
     icon.className = "rail-icon server-icon";
     icon.textContent = getInitial(server.name);
-    icon.title = server.tagWord ? `${server.name} [${server.tagEmoji || ""}${server.tagWord}]` : server.name;
+    icon.title = server.name;
+    if (server.iconUrl) {
+      icon.style.backgroundImage = `url(${server.iconUrl})`;
+      icon.style.backgroundSize = "cover";
+      icon.style.backgroundPosition = "center";
+      icon.textContent = "";
+    }
     icon.addEventListener("click", () => selectServer(server));
     wrapper.appendChild(icon);
 
@@ -385,10 +556,16 @@ function renderServerRail(servers) {
 
 function renderServerHeader(server, isOwner) {
   const iconEl = document.getElementById("server-header-icon");
+  iconEl.style.backgroundImage = "none";
   iconEl.textContent = getInitial(server.name);
   iconEl.style.backgroundColor = getAvatarColor(server.name);
-  const tagHtml = server.tagWord ? ` <span class="server-tag">${escapeHtml(server.tagEmoji || "")}${escapeHtml(server.tagWord)}</span>` : "";
-  document.getElementById("server-view-name").innerHTML = `${escapeHtml(server.name)}${tagHtml}`;
+  if (server.iconUrl) {
+    iconEl.style.backgroundImage = `url(${server.iconUrl})`;
+    iconEl.style.backgroundSize = "cover";
+    iconEl.style.backgroundPosition = "center";
+    iconEl.textContent = "";
+  }
+  document.getElementById("server-view-name").textContent = server.name;
   const count = server.members ? server.members.length : 1;
   document.getElementById("server-view-count").textContent = `${count} player${count === 1 ? "" : "s"}`;
   document.getElementById("server-banner").style.backgroundColor = server.bannerColor || "#0000ff";
@@ -397,8 +574,11 @@ function renderServerHeader(server, isOwner) {
 }
 
 function selectServer(server) {
-  currentServer = server;
+  document.querySelectorAll(".sidebar-nav-btn").forEach((b) => b.classList.remove("active"));
   document.getElementById("friends-view").style.display = "none";
+  document.getElementById("quests-nav-view").style.display = "none";
+  document.getElementById("discover-nav-view").style.display = "none";
+  currentServer = server;
   document.getElementById("server-view").style.display = "block";
 
   const isOwner = server.ownerUid === myUid;
@@ -423,23 +603,6 @@ function selectServer(server) {
     <div class="empty-main">
       <div class="empty-logo">${escapeHtml(server.name)}</div>
       <p>Pick a channel to start chatting</p>
-    </div>
-  `;
-  currentChat = null;
-  if (currentMessagesUnsubscribe) { currentMessagesUnsubscribe(); currentMessagesUnsubscribe = null; }
-  if (currentTypingUnsubscribe) { currentTypingUnsubscribe(); currentTypingUnsubscribe = null; }
-}
-
-function showFriendsView() {
-  currentServer = null;
-  if (currentChannelsUnsubscribe) { currentChannelsUnsubscribe(); currentChannelsUnsubscribe = null; }
-  if (currentJoinRequestsUnsubscribe) { currentJoinRequestsUnsubscribe(); currentJoinRequestsUnsubscribe = null; }
-  document.getElementById("server-view").style.display = "none";
-  document.getElementById("friends-view").style.display = "block";
-  document.getElementById("main-area").innerHTML = `
-    <div class="empty-main">
-      <div class="empty-logo">Larpcord</div>
-      <p>Add friends to start chatting</p>
     </div>
   `;
   currentChat = null;
@@ -1000,7 +1163,13 @@ async function openProfileView(uid, fallbackUsername) {
     document.getElementById("profile-view-banner").style.backgroundColor = data.bannerColor || "#0000ff";
     document.getElementById("profile-view-bio").textContent = data.bio && data.bio.trim() ? data.bio : "No bio yet.";
     document.getElementById("profile-view-gender").textContent = data.gender && data.gender.trim() ? data.gender : "Not specified";
-    document.getElementById("profile-view-badge-row").innerHTML = renderBadgesHtml(data.badges);
+    document.getElementById("profile-view-badge-row").innerHTML = renderBadgesHtml(data.badges) + renderEquippedTagHtml(data.equippedTag);
+    document.querySelectorAll("#profile-view-badge-row .equipped-tag").forEach((tagEl) => {
+      tagEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handleTagClick(tagEl.dataset.serverId, tagEl.dataset.joinCode);
+      });
+    });
     if (data.pfpUrl) {
       avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
       avatarEl.style.backgroundSize = "cover";
@@ -1018,6 +1187,16 @@ on("close-profile-view-btn", "click", () => {
 });
 
 on("my-avatar", "click", () => openProfileView(myUid, myUsername));
+
+on("open-add-friend-btn", "click", () => {
+  document.getElementById("add-friend-input").value = "";
+  document.getElementById("add-friend-message").textContent = "";
+  document.getElementById("add-friend-modal-backdrop").style.display = "flex";
+});
+
+on("close-add-friend-modal-btn", "click", () => {
+  document.getElementById("add-friend-modal-backdrop").style.display = "none";
+});
 
 on("add-friend-btn", "click", async () => {
   const input = document.getElementById("add-friend-input");
@@ -1039,8 +1218,6 @@ on("add-friend-btn", "click", async () => {
 on("logout-btn", "click", () => {
   signOut(auth).then(() => window.location.href = "login.html");
 });
-
-on("rail-home-btn", "click", showFriendsView);
 
 on("rail-add-btn", "click", () => {
   document.getElementById("server-modal-backdrop").style.display = "flex";
@@ -1065,7 +1242,6 @@ document.querySelectorAll(".settings-tab").forEach((tab) => {
     tab.classList.add("active");
     const target = tab.dataset.settingsTab;
     document.getElementById("settings-display-panel").style.display = target === "display" ? "block" : "none";
-    document.getElementById("settings-quests-panel").style.display = target === "quests" ? "block" : "none";
     document.getElementById("settings-account-panel").style.display = target === "account" ? "block" : "none";
     document.getElementById("settings-security-panel").style.display = target === "security" ? "block" : "none";
   });
@@ -1219,6 +1395,26 @@ on("server-settings-btn", "click", () => {
   document.getElementById("server-custom-code").value = "";
   document.getElementById("custom-code-message").textContent = "";
   document.getElementById("server-settings-message").textContent = "";
+  editingServerIconUrl = currentServer.iconUrl || null;
+  const iconPreview = document.getElementById("server-icon-preview");
+  if (editingServerIconUrl) {
+    iconPreview.style.backgroundImage = `url(${editingServerIconUrl})`;
+    iconPreview.style.backgroundSize = "cover";
+    iconPreview.style.backgroundPosition = "center";
+    iconPreview.textContent = "";
+  } else {
+    iconPreview.style.backgroundImage = "none";
+    iconPreview.style.backgroundColor = getAvatarColor(currentServer.name);
+    iconPreview.textContent = getInitial(currentServer.name);
+  }
+  document.getElementById("server-icon-message").textContent = "";
+  const featuredRow = document.getElementById("featured-toggle-row");
+  if ((myProfile.badges || []).includes("hammer")) {
+    featuredRow.style.display = "flex";
+    document.getElementById("server-settings-featured").checked = !!currentServer.featured;
+  } else {
+    featuredRow.style.display = "none";
+  }
   document.getElementById("server-settings-modal-backdrop").style.display = "flex";
 });
 
@@ -1229,6 +1425,32 @@ on("close-server-settings-btn", "click", () => {
 on("server-banner-random-btn", "click", () => {
   selectedServerBannerColor = randomBannerColor();
   buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
+});
+
+on("server-icon-upload-btn", "click", () => {
+  document.getElementById("server-icon-file-input").click();
+});
+
+on("server-icon-file-input", "change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById("server-icon-message");
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const url = await uploadProfileImage(file);
+    editingServerIconUrl = url;
+    const preview = document.getElementById("server-icon-preview");
+    preview.style.backgroundImage = `url(${url})`;
+    preview.style.backgroundSize = "cover";
+    preview.style.backgroundPosition = "center";
+    preview.textContent = "";
+    msg.textContent = "Icon uploaded — hit Save to apply.";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
 });
 
 on("save-server-settings-btn", "click", async () => {
@@ -1243,13 +1465,17 @@ on("save-server-settings-btn", "click", async () => {
   const isPrivate = document.getElementById("server-settings-private").checked;
   const tagEmoji = document.getElementById("server-tag-emoji").value.trim();
   const tagWord = document.getElementById("server-tag-word").value.trim().toUpperCase();
+  const updates = { name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord, iconUrl: editingServerIconUrl || null };
+  if ((myProfile.badges || []).includes("hammer")) {
+    updates.featured = document.getElementById("server-settings-featured").checked;
+  }
   const saveBtn = document.getElementById("save-server-settings-btn");
   saveBtn.disabled = true;
   msg.textContent = "Saving...";
   msg.style.color = "#8a8fa3";
   try {
-    await updateServerSettings(db, currentServer.id, { name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord });
-    currentServer = { ...currentServer, name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord };
+    await updateServerSettings(db, currentServer.id, updates);
+    currentServer = { ...currentServer, ...updates };
     renderServerHeader(currentServer, true);
     msg.textContent = "Saved!";
     msg.style.color = "#4ade80";
@@ -1297,7 +1523,7 @@ on("delete-server-btn", "click", async () => {
   try {
     await deleteServerEntirely(db, currentServer.id);
     document.getElementById("server-settings-modal-backdrop").style.display = "none";
-    showFriendsView();
+    switchSidebarNav("friends");
   } catch (err) {
     msg.textContent = err.message;
     msg.style.color = "#f87171";
@@ -1310,22 +1536,34 @@ on("server-leave-btn", "click", async () => {
   if (!confirm(`Leave "${currentServer.name}"?`)) return;
   try {
     await leaveServer(db, currentServer.id, myUid);
-    showFriendsView();
+    switchSidebarNav("friends");
   } catch (err) {
     alert(err.message);
   }
 });
+
+function populateEquipTagSelect() {
+  const select = document.getElementById("profile-equip-tag-select");
+  select.innerHTML = `<option value="">None</option>`;
+  myServers.filter((s) => s.tagWord).forEach((s) => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = `${s.tagEmoji || ""}${s.tagWord} — ${s.name}`;
+    if (myProfile.equippedTag && myProfile.equippedTag.serverId === s.id) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
 
 on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
   document.getElementById("profile-edit-gender").value = myProfile.gender || "";
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
+  populateEquipTagSelect();
   document.getElementById("profile-edit-message").textContent = "";
   document.getElementById("pfp-upload-message").textContent = "";
   renderPfpPreview();
   renderBlockedUsersList();
-  renderQuestsTab();
   document.getElementById("account-current-email").value = auth.currentUser ? auth.currentUser.email : "";
   document.getElementById("account-new-email").value = "";
   document.getElementById("account-new-password").value = "";
@@ -1336,7 +1574,6 @@ on("my-profile-settings-btn", "click", () => {
   document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
   document.querySelector('[data-settings-tab="display"]').classList.add("active");
   document.getElementById("settings-display-panel").style.display = "block";
-  document.getElementById("settings-quests-panel").style.display = "none";
   document.getElementById("settings-account-panel").style.display = "none";
   document.getElementById("settings-security-panel").style.display = "none";
   document.getElementById("settings-modal-backdrop").style.display = "flex";
@@ -1375,43 +1612,26 @@ on("pfp-file-input", "change", async (e) => {
   }
 });
 
-on("watch-ad-btn", "click", () => {
-  if (!canWatchAdToday()) return;
-  const btn = document.getElementById("watch-ad-btn");
-  btn.disabled = true;
-  let seconds = 5;
-  btn.textContent = `Loading ad... ${seconds}`;
-  const interval = setInterval(() => {
-    seconds -= 1;
-    if (seconds > 0) btn.textContent = `Loading ad... ${seconds}`;
-    else clearInterval(interval);
-  }, 1000);
-
-  setTimeout(async () => {
-    try {
-      await updateDoc(doc(db, "users", myUid), { credits: increment(50), lastAdWatch: serverTimestamp() });
-      myProfile = { ...myProfile, credits: (myProfile.credits || 0) + 50, lastAdWatch: { toDate: () => new Date() } };
-      renderQuestsTab();
-      showToast("+50 Credits!");
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = "Watch Ad";
-      alert(err.message);
-    }
-  }, 5000);
-});
-
 on("save-profile-btn", "click", async () => {
   const bio = document.getElementById("profile-edit-bio").value.trim();
   const gender = document.getElementById("profile-edit-gender").value.trim();
+  const selectedServerId = document.getElementById("profile-equip-tag-select").value;
   const msg = document.getElementById("profile-edit-message");
   const saveBtn = document.getElementById("save-profile-btn");
   saveBtn.disabled = true;
   msg.textContent = "Saving...";
   msg.style.color = "#8a8fa3";
+
+  let equippedTag = null;
+  if (selectedServerId) {
+    const s = myServers.find((sv) => sv.id === selectedServerId);
+    if (s) equippedTag = { serverId: s.id, tagEmoji: s.tagEmoji || "", tagWord: s.tagWord || "", joinCode: s.joinCode };
+  }
+
   try {
-    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor });
-    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor };
+    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag });
+    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag };
+    renderMyBadgeRow();
     msg.textContent = "Saved!";
     msg.style.color = "#4ade80";
   } catch (err) {
