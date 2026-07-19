@@ -50,6 +50,21 @@ export async function sendMessage(db, pathSegments, senderId, senderUsername, te
         // skip failed lookups, don't block sending the message
       }
     }
+
+    if (channelMeta.tagPings && channelMeta.tagPings.length) {
+      for (const tp of channelMeta.tagPings) {
+        const pattern = new RegExp(`@${tp.tagName}-Ping`, "i");
+        if (pattern.test(text)) {
+          const updates = {};
+          tp.uids.forEach((uid) => {
+            if (uid !== senderId) updates[`mentions.${uid}`] = increment(1);
+          });
+          if (Object.keys(updates).length > 0) {
+            await updateDoc(doc(db, "servers", channelMeta.serverId), updates);
+          }
+        }
+      }
+    }
   }
 }
 
