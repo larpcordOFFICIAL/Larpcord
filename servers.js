@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, deleteDoc, deleteField, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, arrayRemove, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { collection, doc, setDoc, deleteDoc, deleteField, getDocs, updateDoc, query, where, onSnapshot, arrayUnion, arrayRemove, serverTimestamp, Timestamp, increment } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
 
@@ -32,7 +32,10 @@ export async function createServer(db, ownerUid, ownerUsername, name, isPrivate)
     categories: {},
     roles: {},
     memberRoles: {},
+    memberTags: {},
+    joinableTags: [],
     timeouts: {},
+    lifts: 0,
     createdAt: serverTimestamp()
   });
 
@@ -139,13 +142,13 @@ export async function joinServerByCode(db, uid, username, code) {
       username,
       createdAt: serverTimestamp()
     });
-    return { requested: true, serverName: data.name };
+    return { requested: true, serverName: data.name, serverId, joinableTags: data.joinableTags || [] };
   } else {
     await updateDoc(doc(db, "servers", serverId), {
       members: arrayUnion(uid),
       [`memberUsernames.${uid}`]: username
     });
-    return { requested: false, serverName: data.name };
+    return { requested: false, serverName: data.name, serverId, joinableTags: data.joinableTags || [] };
   }
 }
 
@@ -196,12 +199,6 @@ export async function createCategory(db, serverId, name) {
   return id;
 }
 
-export async function renameCategory(db, serverId, categoryId, name) {
-  await updateDoc(doc(db, "servers", serverId), {
-    [`categories.${categoryId}.name`]: name.trim()
-  });
-}
-
 export async function deleteCategory(db, serverId, categoryId) {
   await updateDoc(doc(db, "servers", serverId), {
     [`categories.${categoryId}`]: deleteField()
@@ -220,12 +217,6 @@ export async function createRole(db, serverId, name, color, perms) {
     [`roles.${id}`]: { name: name.trim(), color, perms }
   });
   return id;
-}
-
-export async function updateRole(db, serverId, roleId, name, color, perms) {
-  await updateDoc(doc(db, "servers", serverId), {
-    [`roles.${roleId}`]: { name: name.trim(), color, perms }
-  });
 }
 
 export async function deleteRole(db, serverId, roleId) {
@@ -249,4 +240,21 @@ export async function timeoutMember(db, serverId, uid, minutes) {
 
 export async function removeTimeout(db, serverId, uid) {
   await updateDoc(doc(db, "servers", serverId), { [`timeouts.${uid}`]: deleteField() });
+}
+
+// ---------- Joinable Tags (e.g. "Football") ----------
+
+export async function setJoinableTags(db, serverId, tagsArray) {
+  await updateDoc(doc(db, "servers", serverId), { joinableTags: tagsArray });
+}
+
+export async function setMemberTags(db, serverId, uid, tagsArray) {
+  await updateDoc(doc(db, "servers", serverId), { [`memberTags.${uid}`]: tagsArray });
+}
+
+// ---------- Lifts ----------
+
+export async function applyLiftToServer(db, serverId, myUid, liftsToSpend) {
+  await updateDoc(doc(db, "servers", serverId), { lifts: increment(liftsToSpend) });
+  await updateDoc(doc(db, "users", myUid), { liftsAvailable: increment(-liftsToSpend) });
 }
