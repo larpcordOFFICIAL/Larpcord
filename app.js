@@ -4,9 +4,9 @@ import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, increment, ser
 import { firebaseConfig } from './firebase-config.js';
 import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId, unfriendUser, blockUser, unblockUser, listenForBlockedUsers } from './friends.js';
-import { listenForMessages, sendMessage, toggleReaction, markAsRead, deleteMessage, setTyping, listenForTyping } from './messages.js';
+import { listenForMessages, sendMessage, toggleReaction, toggleSuperReaction, markAsRead, deleteMessage, setTyping, listenForTyping } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer, setCustomJoinCode } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer, setCustomJoinCode, createCategory, deleteCategory, createRole, deleteRole, assignMemberRole, timeoutMember, removeTimeout } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
 
 const app = initializeApp(firebaseConfig);
@@ -30,6 +30,7 @@ let replyingTo = null;
 let gifSearchTimeout = null;
 let selectedServerBannerColor = null;
 let selectedProfileBannerColor = null;
+let selectedRoleColor = null;
 let previousMentions = {};
 let mentionsInitialized = false;
 let typingThrottle = 0;
@@ -39,7 +40,6 @@ const userExtraCache = {};
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
-const BADGE_ICONS = { leaf: "🍃", hammer: "🔨", gifter: "🎁" };
 
 const ICONS = {
   smile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>`,
@@ -52,7 +52,23 @@ const ICONS = {
   trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
   exit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`,
   people: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
-  gem: `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"></path><path d="M2 9h20"></path><path d="M9 3 8 9l4 12 4-12-1-6"></path></svg>`
+  gem: `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"></path><path d="M2 9h20"></path><path d="M9 3 8 9l4 12 4-12-1-6"></path></svg>`,
+  gemSmall: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"></path><path d="M2 9h20"></path><path d="M9 3 8 9l4 12 4-12-1-6"></path></svg>`,
+  folder: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`,
+  play: `<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`,
+  star: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`,
+  leaf: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg>`,
+  hammer: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"></path><path d="M17.64 15 22 10.64"></path><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"></path></svg>`,
+  gift: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"></polyline><rect x="2" y="7" width="20" height="5"></rect><line x1="12" y1="22" x2="12" y2="7"></line><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>`,
+  sparkle: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"></path></svg>`
+};
+
+const BADGE_ICONS = {
+  leaf: ICONS.leaf,
+  hammer: ICONS.hammer,
+  gifter: ICONS.gift,
+  turboBasic: ICONS.sparkle,
+  turboPremium: ICONS.gemSmall
 };
 
 function escapeHtml(str) {
@@ -109,8 +125,25 @@ function applyStaticIcons() {
   setIcon("server-leave-btn", ICONS.exit);
   setIcon("my-profile-settings-btn", ICONS.gear);
   setIcon("logout-btn", ICONS.power);
+  setIcon("add-category-btn", ICONS.folder);
 }
 applyStaticIcons();
+
+function memberHasPerm(server, uid, permName) {
+  if (!server) return false;
+  const roleId = (server.memberRoles || {})[uid];
+  if (!roleId) return false;
+  const role = (server.roles || {})[roleId];
+  return !!(role && role.perms && role.perms[permName]);
+}
+
+function hasSuperReact() {
+  return myProfile.turboTier === "basic" || myProfile.turboTier === "premium";
+}
+
+function hasBannerImagePerk() {
+  return myProfile.turboTier === "premium";
+}
 
 function showToast(message) {
   const container = document.getElementById("toast-container");
@@ -277,7 +310,7 @@ function renderTypingIndicator(typingMap) {
   }
 }
 
-// ---------- Sidebar nav (rail Friends icon + Quests / Shop / Servers) ----------
+// ---------- Sidebar nav ----------
 
 function switchSidebarNav(target) {
   document.querySelectorAll(".sidebar-nav-btn").forEach((b) => b.classList.remove("active"));
@@ -322,7 +355,7 @@ function renderQuestsMain() {
   document.getElementById("main-area").innerHTML = `
     <div class="quests-hero-wrap">
       <div class="quests-hero-card">
-        <div class="quest-hero-icon">🎬</div>
+        <div class="quest-hero-icon">${ICONS.play}</div>
         <div class="quest-hero-title">Watch Advertisement</div>
         <div class="quest-hero-reward-badge">+50 Credits</div>
         <p class="quest-hero-desc">Support the development of LarpCord by watching a short advertisement.</p>
@@ -383,6 +416,7 @@ on("collect-reward-btn", "click", async () => {
 });
 
 function renderShopMain() {
+  const tier = myProfile.turboTier || null;
   document.getElementById("main-area").innerHTML = `
     <div class="shop-main">
       <div class="empty-logo" style="font-size:24px; margin-bottom: 16px;">Shop</div>
@@ -390,14 +424,35 @@ function renderShopMain() {
       <div class="turbo-hero-card">
         <div class="turbo-hero-icon">${ICONS.gem}</div>
         <div class="turbo-hero-title">TURBO</div>
-        <p class="turbo-hero-desc">Unlock premium cosmetics, extra Lifts for your favorite servers, and more ways to stand out on LarpCord.</p>
-        <ul class="turbo-perks-list">
-          <li>Exclusive profile & bio effects</li>
-          <li>Animated name tag</li>
-          <li>Lifts for the servers you love</li>
-          <li>Custom image banners</li>
-        </ul>
-        <button class="turbo-upgrade-btn" disabled>Coming Soon</button>
+        <p class="turbo-hero-desc">Unlock premium cosmetics and features. Bought with Credits, no real money involved.</p>
+
+        <div class="turbo-tier-card">
+          <div class="turbo-tier-header">
+            <span class="turbo-tier-icon">${ICONS.sparkle}</span>
+            <span class="turbo-tier-name">TURBO BASIC</span>
+            <span class="turbo-tier-price">300 Credits</span>
+          </div>
+          <ul class="turbo-perks-list">
+            <li>Super Reactions</li>
+            <li>Nitro badge on your profile</li>
+          </ul>
+          <button id="buy-turbo-basic-btn" ${tier ? "disabled" : ""}>${tier ? (tier === "basic" ? "Owned" : "Included in Turbo") : "Buy"}</button>
+        </div>
+
+        <div class="turbo-tier-card turbo-tier-premium">
+          <div class="turbo-tier-header">
+            <span class="turbo-tier-icon">${ICONS.gemSmall}</span>
+            <span class="turbo-tier-name">TURBO</span>
+            <span class="turbo-tier-price">1,000 Credits</span>
+          </div>
+          <ul class="turbo-perks-list">
+            <li>Everything in Turbo Basic</li>
+            <li>Image profile banner</li>
+            <li>Premium badge</li>
+            <li>More Lifts, coming soon</li>
+          </ul>
+          <button id="buy-turbo-premium-btn" ${tier === "premium" ? "disabled" : ""}>${tier === "premium" ? "Owned" : "Buy"}</button>
+        </div>
       </div>
 
       <div class="section-label" style="text-align:center;">Credits Packages</div>
@@ -418,9 +473,37 @@ function renderShopMain() {
           <button disabled>Coming Soon</button>
         </div>
       </div>
-      <p class="settings-note" style="text-align:center;">Purchases aren't available yet — for now, earn Credits from Quests.</p>
+      <p class="settings-note" style="text-align:center;">Direct Credits purchases aren't available yet — earn Credits from Quests for now.</p>
     </div>
   `;
+  on("buy-turbo-basic-btn", "click", () => buyTurbo("basic"));
+  on("buy-turbo-premium-btn", "click", () => buyTurbo("premium"));
+}
+
+async function buyTurbo(tier) {
+  const cost = tier === "premium" ? 1000 : 300;
+  if (myProfile.turboTier === "premium" || myProfile.turboTier === tier) {
+    showToast("You already have this.");
+    return;
+  }
+  if ((myProfile.credits || 0) < cost) {
+    showToast("Not enough Credits.");
+    return;
+  }
+  if (!confirm(`Spend ${cost} Credits on ${tier === "premium" ? "TURBO" : "TURBO BASIC"}?`)) return;
+
+  const newBadges = (myProfile.badges || []).filter((b) => b !== "turboBasic" && b !== "turboPremium");
+  newBadges.push(tier === "premium" ? "turboPremium" : "turboBasic");
+
+  try {
+    await updateDoc(doc(db, "users", myUid), { credits: increment(-cost), turboTier: tier, badges: newBadges });
+    myProfile = { ...myProfile, credits: (myProfile.credits || 0) - cost, turboTier: tier, badges: newBadges };
+    renderMyBadgeRow();
+    renderShopMain();
+    showToast(`${tier === "premium" ? "TURBO" : "TURBO BASIC"} activated!`);
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 async function renderDiscoverMain() {
@@ -585,6 +668,11 @@ function renderFriends(friends) {
 
 function renderServerRail(servers) {
   myServers = servers;
+  if (currentServer) {
+    const updated = servers.find((s) => s.id === currentServer.id);
+    if (updated) currentServer = updated;
+  }
+
   const rail = document.getElementById("server-list");
   rail.innerHTML = "";
   servers.forEach((server) => {
@@ -651,15 +739,17 @@ function selectServer(server) {
   document.getElementById("server-view").style.display = "block";
 
   const isOwner = server.ownerUid === myUid;
+  const canManage = isOwner || memberHasPerm(server, myUid, "manageChannels");
   renderServerHeader(server, isOwner);
-  document.getElementById("add-channel-btn").style.display = isOwner ? "flex" : "none";
+  document.getElementById("add-channel-btn").style.display = canManage ? "flex" : "none";
+  document.getElementById("add-category-btn").style.display = canManage ? "flex" : "none";
 
   if ((server.mentions && server.mentions[myUid]) > 0) {
     clearServerMentions(db, server.id, myUid);
   }
 
   if (currentChannelsUnsubscribe) currentChannelsUnsubscribe();
-  currentChannelsUnsubscribe = listenForChannels(db, server.id, (channels) => renderChannelList(server, channels, isOwner));
+  currentChannelsUnsubscribe = listenForChannels(db, server.id, (channels) => renderChannelList(server, channels, isOwner, canManage));
 
   if (currentJoinRequestsUnsubscribe) { currentJoinRequestsUnsubscribe(); currentJoinRequestsUnsubscribe = null; }
   if (isOwner) {
@@ -679,30 +769,53 @@ function selectServer(server) {
   if (currentTypingUnsubscribe) { currentTypingUnsubscribe(); currentTypingUnsubscribe = null; }
 }
 
-function renderChannelList(server, channels, isOwner) {
+function renderChannelItem(server, ch, canManage) {
+  const item = document.createElement("div");
+  item.className = "channel-item";
+  const gearHtml = canManage ? `<button class="channel-gear-btn">${ICONS.gear}</button>` : "";
+  const lastMsg = ch.lastMessageAt ? ch.lastMessageAt.toMillis() : 0;
+  const lastRead = (ch.lastRead && ch.lastRead[myUid]) ? ch.lastRead[myUid].toMillis() : 0;
+  const unreadDot = lastMsg > lastRead ? `<span class="channel-dot"></span>` : "";
+
+  item.innerHTML = `<span class="channel-hash">#</span><span class="channel-name-text">${escapeHtml(ch.name)}</span>${unreadDot}${gearHtml}`;
+  item.querySelector(".channel-name-text").addEventListener("click", () => openChannel(server, ch));
+  item.querySelector(".channel-hash").addEventListener("click", () => openChannel(server, ch));
+  const gearBtn = item.querySelector(".channel-gear-btn");
+  if (gearBtn) {
+    gearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openChannelSettings(server, ch);
+    });
+  }
+  return item;
+}
+
+function renderChannelList(server, channels, isOwner, canManage) {
   const list = document.getElementById("channel-list");
   list.innerHTML = "";
+  const categories = server.categories || {};
+  const visibleChannels = channels.filter((ch) => ch.type !== "mod" || isOwner);
 
-  channels.filter((ch) => ch.type !== "mod" || isOwner).forEach((ch) => {
-    const item = document.createElement("div");
-    item.className = "channel-item";
-    const gearHtml = isOwner ? `<button class="channel-gear-btn">${ICONS.gear}</button>` : "";
+  const uncategorized = visibleChannels.filter((ch) => !ch.categoryId || !categories[ch.categoryId]);
+  uncategorized.forEach((ch) => list.appendChild(renderChannelItem(server, ch, canManage)));
 
-    const lastMsg = ch.lastMessageAt ? ch.lastMessageAt.toMillis() : 0;
-    const lastRead = (ch.lastRead && ch.lastRead[myUid]) ? ch.lastRead[myUid].toMillis() : 0;
-    const unreadDot = lastMsg > lastRead ? `<span class="channel-dot"></span>` : "";
-
-    item.innerHTML = `<span class="channel-hash">#</span><span class="channel-name-text">${escapeHtml(ch.name)}</span>${unreadDot}${gearHtml}`;
-    item.querySelector(".channel-name-text").addEventListener("click", () => openChannel(server, ch));
-    item.querySelector(".channel-hash").addEventListener("click", () => openChannel(server, ch));
-    const gearBtn = item.querySelector(".channel-gear-btn");
-    if (gearBtn) {
-      gearBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openChannelSettings(server, ch);
+  Object.entries(categories).forEach(([catId, cat]) => {
+    const chsInCat = visibleChannels.filter((ch) => ch.categoryId === catId);
+    const header = document.createElement("div");
+    header.className = "category-header";
+    header.innerHTML = `<span>${escapeHtml(cat.name)}</span>`;
+    if (canManage) {
+      const delBtn = document.createElement("button");
+      delBtn.className = "category-delete-btn";
+      delBtn.innerHTML = ICONS.trash;
+      delBtn.addEventListener("click", async () => {
+        if (!confirm(`Delete category "${cat.name}"? Its channels become uncategorized.`)) return;
+        await deleteCategory(db, server.id, catId);
       });
+      header.appendChild(delBtn);
     }
-    list.appendChild(item);
+    list.appendChild(header);
+    chsInCat.forEach((ch) => list.appendChild(renderChannelItem(server, ch, canManage)));
   });
 }
 
@@ -730,9 +843,16 @@ function renderServerJoinRequests(server, requests) {
   });
 }
 
+function populateCategorySelect(selectId, serverObj, selectedId) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = `<option value="">No category</option>` +
+    Object.entries(serverObj.categories || {}).map(([id, c]) => `<option value="${id}" ${id === selectedId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+}
+
 function openChannelSettings(server, channel) {
   editingChannel = { server, channel };
   document.getElementById("edit-channel-name").value = channel.name;
+  populateCategorySelect("edit-channel-category", server, channel.categoryId);
   const lockRow = document.getElementById("channel-lock-row");
   const checkbox = document.getElementById("edit-channel-allow-talk");
   if (channel.type === "general") {
@@ -765,8 +885,10 @@ function groupMessages(messages) {
 
 function renderReactions(msg) {
   const reactions = msg.reactions || {};
+  const superReactions = msg.superReactions || {};
   const emojis = Object.keys(reactions).filter((e) => reactions[e] && reactions[e].length > 0);
-  if (emojis.length === 0) return "";
+  const superEmojis = Object.keys(superReactions).filter((e) => superReactions[e] && superReactions[e].length > 0);
+  if (emojis.length === 0 && superEmojis.length === 0) return "";
 
   const pills = emojis.map((emoji) => {
     const count = reactions[emoji].length;
@@ -774,7 +896,13 @@ function renderReactions(msg) {
     return `<span class="reaction-pill ${mine}" data-msg-id="${msg.id}" data-emoji="${emoji}">${emoji} ${count}</span>`;
   }).join("");
 
-  return `<div class="reactions-row">${pills}</div>`;
+  const superPills = superEmojis.map((emoji) => {
+    const count = superReactions[emoji].length;
+    const mine = superReactions[emoji].includes(myUid) ? "mine" : "";
+    return `<span class="reaction-pill super-pill ${mine}" data-msg-id="${msg.id}" data-emoji="${emoji}" data-super="1">${emoji} ${count}</span>`;
+  }).join("");
+
+  return `<div class="reactions-row">${pills}${superPills}</div>`;
 }
 
 function renderInviteCard(msg) {
@@ -802,8 +930,10 @@ function renderSingleMessage(msg) {
     : `<p class="message-text">${renderTextWithMentions(msg.text)}</p>`;
 
   const hasMention = /@\w+/.test(msg.text || "");
-  const canDelete = msg.senderId === myUid || (currentChat && currentChat.type === "channel" && currentChat.isOwner);
+  const canDelete = msg.senderId === myUid ||
+    (currentChat && currentChat.type === "channel" && (currentChat.isOwner || memberHasPerm(currentServer, myUid, "deleteMessages")));
   const deleteHtml = canDelete ? `<button class="delete-msg-btn" data-msg-id="${msg.id}">${ICONS.trash}</button>` : "";
+  const superBtnHtml = hasSuperReact() ? `<button class="super-react-btn" data-msg-id="${msg.id}">${ICONS.star}</button>` : "";
 
   return `
     <div class="message-line ${hasMention ? "mentioned" : ""}">
@@ -811,6 +941,7 @@ function renderSingleMessage(msg) {
       ${contentHtml}
       <span class="message-actions">
         <button class="react-btn" data-msg-id="${msg.id}">${ICONS.addReaction}</button>
+        ${superBtnHtml}
         <button class="reply-btn" data-msg-id="${msg.id}" data-sender="${escapeHtml(msg.senderUsername)}" data-text="${escapeHtml(msg.text || (msg.gifUrl ? 'a GIF' : (msg.invite ? 'a server invite' : '')))}">${ICONS.reply}</button>
         ${deleteHtml}
       </span>
@@ -855,20 +986,38 @@ function renderMessages(messages) {
   list.querySelectorAll(".react-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const el = document.getElementById("quick-" + btn.dataset.msgId);
+      el.dataset.mode = "normal";
+      el.style.display = el.style.display === "none" ? "flex" : "none";
+    });
+  });
+
+  list.querySelectorAll(".super-react-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const el = document.getElementById("quick-" + btn.dataset.msgId);
+      el.dataset.mode = "super";
       el.style.display = el.style.display === "none" ? "flex" : "none";
     });
   });
 
   list.querySelectorAll(".quick-react").forEach((el) => {
     el.addEventListener("click", () => {
-      toggleReaction(db, currentChat.pathSegments, el.dataset.msgId, el.dataset.emoji, myUid);
-      el.parentElement.style.display = "none";
+      const panel = el.parentElement;
+      if (panel.dataset.mode === "super") {
+        toggleSuperReaction(db, currentChat.pathSegments, el.dataset.msgId, el.dataset.emoji, myUid);
+      } else {
+        toggleReaction(db, currentChat.pathSegments, el.dataset.msgId, el.dataset.emoji, myUid);
+      }
+      panel.style.display = "none";
     });
   });
 
   list.querySelectorAll(".reaction-pill").forEach((pill) => {
     pill.addEventListener("click", () => {
-      toggleReaction(db, currentChat.pathSegments, pill.dataset.msgId, pill.dataset.emoji, myUid);
+      if (pill.dataset.super) {
+        toggleSuperReaction(db, currentChat.pathSegments, pill.dataset.msgId, pill.dataset.emoji, myUid);
+      } else {
+        toggleReaction(db, currentChat.pathSegments, pill.dataset.msgId, pill.dataset.emoji, myUid);
+      }
     });
   });
 
@@ -999,9 +1148,10 @@ function sendGif(url) {
   document.getElementById("picker-popup").style.display = "none";
 }
 
-function renderComposerHTML(canWrite, placeholder) {
+function renderComposerHTML(canWrite, placeholder, timedOut) {
   if (!canWrite) {
-    return `<div class="readonly-banner">${ICONS.lock} Only the owner can post in this channel</div>`;
+    const text = timedOut ? "You are timed out in this server" : "Only the owner can post in this channel";
+    return `<div class="readonly-banner">${ICONS.lock} ${text}</div>`;
   }
   return `
     <div id="typing-indicator" class="typing-indicator" style="display:none;"></div>
@@ -1091,7 +1241,9 @@ function openChat(friend) {
 
 function openChannel(server, channel) {
   const isOwner = server.ownerUid === myUid;
-  const canWrite = isOwner || (channel.type === "general" && !channel.locked);
+  const timeoutUntil = (server.timeouts || {})[myUid];
+  const isTimedOut = !!(timeoutUntil && timeoutUntil.toMillis && timeoutUntil.toMillis() > Date.now());
+  const canWrite = !isTimedOut && (isOwner || (channel.type === "general" && !channel.locked));
   replyingTo = null;
   currentChat = { type: "channel", pathSegments: ["servers", server.id, "channels", channel.id], canWrite, serverId: server.id, channelId: channel.id, isOwner };
 
@@ -1103,7 +1255,7 @@ function openChannel(server, channel) {
         <span class="chat-username">#${escapeHtml(channel.name)}</span>
       </div>
       <div class="messages-list" id="messages-list"></div>
-      ${renderComposerHTML(canWrite, `Message #${escapeHtml(channel.name)}`)}
+      ${renderComposerHTML(canWrite, `Message #${escapeHtml(channel.name)}`, isTimedOut)}
     </div>
   `;
 
@@ -1258,7 +1410,9 @@ async function openProfileView(uid, fallbackUsername) {
   avatarEl.style.backgroundImage = "none";
   avatarEl.style.backgroundColor = getAvatarColor(fallbackUsername);
   avatarEl.textContent = getInitial(fallbackUsername);
-  document.getElementById("profile-view-banner").style.backgroundColor = "#2a2a33";
+  const bannerEl = document.getElementById("profile-view-banner");
+  bannerEl.style.backgroundImage = "none";
+  bannerEl.style.backgroundColor = "#2a2a33";
   document.getElementById("profile-view-bio").textContent = "Loading...";
   document.getElementById("profile-view-gender").textContent = "Loading...";
   document.getElementById("profile-view-badge-row").innerHTML = "";
@@ -1267,7 +1421,13 @@ async function openProfileView(uid, fallbackUsername) {
 
   try {
     const data = uid === myUid ? myProfile : (await getDoc(doc(db, "users", uid))).data() || {};
-    document.getElementById("profile-view-banner").style.backgroundColor = data.bannerColor || "#0000ff";
+    if (data.bannerImageUrl) {
+      bannerEl.style.backgroundImage = `url(${data.bannerImageUrl})`;
+      bannerEl.style.backgroundSize = "cover";
+      bannerEl.style.backgroundPosition = "center";
+    } else {
+      bannerEl.style.backgroundColor = data.bannerColor || "#0000ff";
+    }
     document.getElementById("profile-view-bio").textContent = data.bio && data.bio.trim() ? data.bio : "No bio yet.";
     document.getElementById("profile-view-gender").textContent = data.gender && data.gender.trim() ? data.gender : "Not specified";
     document.getElementById("profile-view-badge-row").innerHTML = renderBadgesHtml(data.badges) + renderEquippedTagHtml(data.equippedTag);
@@ -1344,14 +1504,24 @@ document.querySelectorAll(".modal-tab").forEach((tab) => {
   });
 });
 
-document.querySelectorAll(".settings-tab").forEach((tab) => {
+document.querySelectorAll("#settings-modal-backdrop .settings-tab").forEach((tab) => {
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll("#settings-modal-backdrop .settings-tab").forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
     const target = tab.dataset.settingsTab;
     document.getElementById("settings-display-panel").style.display = target === "display" ? "block" : "none";
     document.getElementById("settings-account-panel").style.display = target === "account" ? "block" : "none";
     document.getElementById("settings-security-panel").style.display = target === "security" ? "block" : "none";
+  });
+});
+
+document.querySelectorAll("#roles-modal-backdrop .settings-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("#roles-modal-backdrop .settings-tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const target = tab.dataset.rolesTab;
+    document.getElementById("roles-tab-panel").style.display = target === "roles" ? "block" : "none";
+    document.getElementById("members-tab-panel").style.display = target === "members" ? "block" : "none";
   });
 });
 
@@ -1418,7 +1588,8 @@ on("save-channel-btn", "click", async () => {
   if (!editingChannel) return;
   const newName = document.getElementById("edit-channel-name").value.trim();
   const checkbox = document.getElementById("edit-channel-allow-talk");
-  const updates = {};
+  const categoryId = document.getElementById("edit-channel-category").value || null;
+  const updates = { categoryId };
   if (newName) updates.name = newName;
   if (editingChannel.channel.type === "general") updates.locked = !checkbox.checked;
   await updateChannel(db, editingChannel.server.id, editingChannel.channel.id, updates);
@@ -1438,6 +1609,7 @@ on("add-channel-btn", "click", () => {
   document.getElementById("new-channel-name").value = "";
   document.getElementById("new-channel-locked").checked = false;
   document.getElementById("new-channel-message").textContent = "";
+  populateCategorySelect("new-channel-category", currentServer, null);
   document.getElementById("new-channel-modal-backdrop").style.display = "flex";
 });
 
@@ -1455,18 +1627,47 @@ on("create-channel-btn", "click", async () => {
     return;
   }
   const locked = document.getElementById("new-channel-locked").checked;
+  const categoryId = document.getElementById("new-channel-category").value || null;
   const createBtn = document.getElementById("create-channel-btn");
   createBtn.disabled = true;
   msg.textContent = "Creating...";
   msg.style.color = "#8a8fa3";
   try {
-    await createChannel(db, currentServer.id, name, locked);
+    await createChannel(db, currentServer.id, name, locked, categoryId);
     document.getElementById("new-channel-modal-backdrop").style.display = "none";
   } catch (err) {
     msg.textContent = err.message;
     msg.style.color = "#f87171";
   } finally {
     createBtn.disabled = false;
+  }
+});
+
+on("add-category-btn", "click", () => {
+  document.getElementById("new-category-name").value = "";
+  document.getElementById("new-category-message").textContent = "";
+  document.getElementById("new-category-modal-backdrop").style.display = "flex";
+});
+
+on("close-new-category-modal-btn", "click", () => {
+  document.getElementById("new-category-modal-backdrop").style.display = "none";
+});
+
+on("create-category-btn", "click", async () => {
+  if (!currentServer) return;
+  const name = document.getElementById("new-category-name").value.trim();
+  const msg = document.getElementById("new-category-message");
+  if (name.length < 1) {
+    msg.textContent = "Enter a category name.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  try {
+    await createCategory(db, currentServer.id, name);
+    document.getElementById("new-category-modal-backdrop").style.display = "none";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
   }
 });
 
@@ -1650,6 +1851,107 @@ on("server-leave-btn", "click", async () => {
   }
 });
 
+// ---------- Roles & Members modal ----------
+
+function renderRolesList() {
+  const list = document.getElementById("roles-list");
+  list.innerHTML = "";
+  Object.entries(currentServer.roles || {}).forEach(([id, role]) => {
+    const item = document.createElement("div");
+    item.className = "role-row";
+    item.innerHTML = `<span class="role-dot" style="background-color:${role.color};"></span><span class="role-name">${escapeHtml(role.name)}</span><button class="delete-role-btn">${ICONS.trash}</button>`;
+    item.querySelector(".delete-role-btn").addEventListener("click", async () => {
+      if (!confirm(`Delete role "${role.name}"?`)) return;
+      await deleteRole(db, currentServer.id, id);
+      renderRolesList();
+    });
+    list.appendChild(item);
+  });
+}
+
+function renderMembersList() {
+  const list = document.getElementById("members-list");
+  list.innerHTML = "";
+  Object.entries(currentServer.memberUsernames || {}).forEach(([uid, username]) => {
+    const roleId = (currentServer.memberRoles || {})[uid];
+    const timeoutUntil = (currentServer.timeouts || {})[uid];
+    const isTimedOut = !!(timeoutUntil && timeoutUntil.toMillis && timeoutUntil.toMillis() > Date.now());
+    const isOwnerRow = uid === currentServer.ownerUid;
+
+    const item = document.createElement("div");
+    item.className = "member-row";
+    item.innerHTML = `
+      <span class="member-name">${escapeHtml(username)}${isOwnerRow ? ' <span class="owner-tag">Owner</span>' : ""}</span>
+      ${!isOwnerRow ? `<select class="member-role-select"></select>` : ""}
+      ${!isOwnerRow ? `<button class="timeout-btn">${isTimedOut ? "Un-Timeout" : "Timeout 10m"}</button>` : ""}
+    `;
+    if (!isOwnerRow) {
+      const select = item.querySelector(".member-role-select");
+      select.innerHTML = `<option value="">No role</option>` +
+        Object.entries(currentServer.roles || {}).map(([rid, r]) => `<option value="${rid}" ${rid === roleId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
+      select.addEventListener("change", async () => {
+        await assignMemberRole(db, currentServer.id, uid, select.value || null);
+      });
+      item.querySelector(".timeout-btn").addEventListener("click", async () => {
+        if (isTimedOut) await removeTimeout(db, currentServer.id, uid);
+        else await timeoutMember(db, currentServer.id, uid, 10);
+        renderMembersList();
+      });
+    }
+    list.appendChild(item);
+  });
+}
+
+on("open-roles-modal-btn", "click", () => {
+  if (!currentServer) return;
+  document.getElementById("server-settings-modal-backdrop").style.display = "none";
+  document.querySelectorAll("#roles-modal-backdrop .settings-tab").forEach((t) => t.classList.remove("active"));
+  document.querySelector('[data-roles-tab="roles"]').classList.add("active");
+  document.getElementById("roles-tab-panel").style.display = "block";
+  document.getElementById("members-tab-panel").style.display = "none";
+  selectedRoleColor = BANNER_COLORS[0];
+  buildColorSwatches("new-role-color-swatches", selectedRoleColor, (c) => { selectedRoleColor = c; });
+  document.getElementById("new-role-name").value = "";
+  document.getElementById("perm-timeout").checked = false;
+  document.getElementById("perm-delete-messages").checked = false;
+  document.getElementById("perm-manage-channels").checked = false;
+  document.getElementById("role-message").textContent = "";
+  renderRolesList();
+  renderMembersList();
+  document.getElementById("roles-modal-backdrop").style.display = "flex";
+});
+
+on("close-roles-modal-btn", "click", () => {
+  document.getElementById("roles-modal-backdrop").style.display = "none";
+});
+
+on("create-role-btn", "click", async () => {
+  if (!currentServer) return;
+  const name = document.getElementById("new-role-name").value.trim();
+  const msg = document.getElementById("role-message");
+  if (name.length < 1) {
+    msg.textContent = "Enter a role name.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  const perms = {
+    timeout: document.getElementById("perm-timeout").checked,
+    deleteMessages: document.getElementById("perm-delete-messages").checked,
+    manageChannels: document.getElementById("perm-manage-channels").checked
+  };
+  try {
+    await createRole(db, currentServer.id, name, selectedRoleColor, perms);
+    document.getElementById("new-role-name").value = "";
+    msg.textContent = "Role created!";
+    msg.style.color = "#4ade80";
+    renderRolesList();
+    renderMembersList();
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
+});
+
 function populateEquipTagSelect() {
   const select = document.getElementById("profile-equip-tag-select");
   select.innerHTML = `<option value="">None</option>`;
@@ -1668,6 +1970,8 @@ on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-dm-privacy").value = myProfile.dmPrivacy || "friends";
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
+  document.getElementById("turbo-banner-image-row").style.display = hasBannerImagePerk() ? "block" : "none";
+  document.getElementById("banner-image-message").textContent = "";
   populateEquipTagSelect();
   document.getElementById("profile-edit-message").textContent = "";
   document.getElementById("pfp-upload-message").textContent = "";
@@ -1680,8 +1984,8 @@ on("my-profile-settings-btn", "click", () => {
   document.getElementById("account-edit-message").textContent = "";
   document.getElementById("delete-account-password").value = "";
   document.getElementById("delete-account-message").textContent = "";
-  document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("active"));
-  document.querySelector('[data-settings-tab="display"]').classList.add("active");
+  document.querySelectorAll("#settings-modal-backdrop .settings-tab").forEach((t) => t.classList.remove("active"));
+  document.querySelector('#settings-modal-backdrop [data-settings-tab="display"]').classList.add("active");
   document.getElementById("settings-display-panel").style.display = "block";
   document.getElementById("settings-account-panel").style.display = "none";
   document.getElementById("settings-security-panel").style.display = "none";
@@ -1695,6 +1999,28 @@ on("close-settings-btn", "click", () => {
 on("profile-banner-random-btn", "click", () => {
   selectedProfileBannerColor = randomBannerColor();
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
+});
+
+on("banner-image-upload-btn", "click", () => {
+  document.getElementById("banner-image-file-input").click();
+});
+
+on("banner-image-file-input", "change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById("banner-image-message");
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const url = await uploadProfileImage(file);
+    await updateDoc(doc(db, "users", myUid), { bannerImageUrl: url });
+    myProfile = { ...myProfile, bannerImageUrl: url };
+    msg.textContent = "Banner image set!";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
 });
 
 on("pfp-upload-btn", "click", () => {
