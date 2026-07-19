@@ -44,7 +44,7 @@
 
       <div id="shop-nav-view" style="display:none;">
         <div class="sidebar-header">Shop</div>
-        <p class="empty-sub">Check the main panel for Turbo and Credits.</p>
+        <p class="empty-sub">Check the main panel for cosmetics and Turbo.</p>
       </div>
 
       <div id="discover-nav-view" style="display:none;">
@@ -71,7 +71,7 @@
         <div class="section-label-row">
           <div class="section-label">Channels</div>
           <div class="channel-header-btns">
-            <button class="add-channel-btn" id="add-category-btn" style="display:none;" title="Add category">📁+</button>
+            <button class="add-channel-btn" id="add-category-btn" style="display:none;" title="Add category"></button>
             <button class="add-channel-btn" id="add-channel-btn" style="display:none;" title="Add channel">+</button>
           </div>
         </div>
@@ -79,7 +79,10 @@
       </div>
 
       <div class="profile-bar">
-        <div class="avatar-circle" id="my-avatar" title="View profile"></div>
+        <div class="avatar-effect-wrap">
+          <div class="avatar-circle" id="my-avatar" title="View profile"></div>
+          <img class="avatar-effect-img" id="my-avatar-effect" style="display:none;">
+        </div>
         <div class="profile-info">
           <div class="profile-name-row">
             <div class="profile-name" id="my-username">Loading...</div>
@@ -202,6 +205,18 @@
     </div>
   </div>
 
+  <div id="join-tags-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-join-tags-modal-btn" class="close-modal-btn">✕</button>
+      <h3>Pick Your Roles</h3>
+      <p class="settings-note">This server has optional roles you can pick — or skip this.</p>
+      <div id="join-tags-list"></div>
+      <div class="button-row">
+        <button id="save-join-tags-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div id="invite-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
       <button id="close-invite-modal-btn" class="close-modal-btn">✕</button>
@@ -234,16 +249,31 @@
           <p id="server-icon-message" class="settings-note"></p>
         </div>
       </div>
-      <div class="section-label">Banner Color</div>
+      <div class="section-label">Banner</div>
       <div class="color-swatch-row" id="server-banner-swatches"></div>
-      <button id="server-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
-      <p class="settings-note">Image banners will be unlockable with 3 Lifts once Lifts exist.</p>
-      <div class="section-label">Server Tag (emoji + up to 4 letters)</div>
+      <button id="server-banner-random-btn" type="button" class="secondary small-btn">Randomize Color</button>
+      <div id="server-banner-image-row">
+        <input type="file" id="server-banner-image-input" accept="image/*" style="display:none;">
+        <button type="button" id="server-banner-image-btn" class="secondary small-btn">Set Banner Image</button>
+        <p id="server-banner-image-message" class="settings-note"></p>
+      </div>
+      <p id="server-banner-locked-note" class="settings-note" style="display:none;">Banner images unlock at 3 Lifts.</p>
+
+      <div class="section-label">Lifts</div>
+      <div class="lifts-bar-row">
+        <div class="lifts-bar-track"><div class="lifts-bar-fill" id="lifts-bar-fill"></div></div>
+        <span class="lifts-count" id="lifts-count-text">0</span>
+      </div>
+      <button id="apply-lift-btn" type="button" class="secondary small-btn" style="display:none;">Apply a Lift</button>
+
+      <div class="section-label">Server Tag (emoji + up to 4 letters) — needs 1 Lift</div>
       <div class="tag-row">
         <input type="text" id="server-tag-emoji" placeholder="🔥" maxlength="2">
         <input type="text" id="server-tag-word" placeholder="WOLF" maxlength="4">
       </div>
-      <div class="section-label">Custom Invite Code (4-10 characters)</div>
+      <div class="section-label">Joinable Roles (comma separated, e.g. Football, Music)</div>
+      <input type="text" id="server-joinable-tags" placeholder="Football, Music">
+      <div class="section-label">Custom Invite Code — needs 5 Lifts</div>
       <div class="tag-row">
         <input type="text" id="server-custom-code" placeholder="e.g. WOLFPACK" maxlength="10">
         <button id="set-custom-code-btn" type="button" class="secondary small-btn">Set Code</button>
@@ -318,12 +348,8 @@
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
-        <div id="turbo-banner-image-row" style="display:none;">
-          <div class="section-label">Banner Image (Turbo)</div>
-          <input type="file" id="banner-image-file-input" accept="image/*" style="display:none;">
-          <button type="button" id="banner-image-upload-btn" class="secondary small-btn">Upload Banner Image</button>
-          <p id="banner-image-message" class="settings-note"></p>
-        </div>
+        <div class="section-label">Equipped Profile Effect</div>
+        <select id="equip-cosmetic-select"></select>
         <div class="section-label">Equipped Server Tag</div>
         <select id="profile-equip-tag-select"></select>
         <div class="section-label">Who Can DM Me</div>
@@ -367,15 +393,48 @@
     </div>
   </div>
 
+  <div id="shop-item-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card shop-item-card">
+      <button id="close-shop-item-modal-btn" class="close-modal-btn">✕</button>
+      <div class="shop-item-modal-image" id="shop-item-modal-image"></div>
+      <h3 id="shop-item-modal-name">Item</h3>
+      <p class="shop-item-modal-price" id="shop-item-modal-price"></p>
+      <p class="shop-item-modal-desc" id="shop-item-modal-desc"></p>
+      <div class="button-row">
+        <button id="shop-item-wishlist-btn" class="secondary">Add to Wishlist</button>
+        <button id="shop-item-buy-btn">Buy</button>
+      </div>
+      <p id="shop-item-modal-message"></p>
+    </div>
+  </div>
+
+  <div id="add-shop-item-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-add-shop-item-modal-btn" class="close-modal-btn">✕</button>
+      <h3>Add Shop Item</h3>
+      <input type="text" id="new-item-name" placeholder="Item name" maxlength="30">
+      <textarea id="new-item-description" placeholder="Short description" maxlength="150" rows="2"></textarea>
+      <input type="number" id="new-item-price" placeholder="Price in Credits" min="0">
+      <input type="file" id="new-item-image-input" accept="image/*,.webp">
+      <div class="button-row">
+        <button id="create-shop-item-btn">Add Item</button>
+      </div>
+      <p id="add-shop-item-message"></p>
+    </div>
+  </div>
+
   <div id="profile-view-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card profile-view-card">
       <button id="close-profile-view-btn" class="close-modal-btn">✕</button>
       <div class="profile-view-banner" id="profile-view-banner"></div>
-      <div class="profile-view-avatar" id="profile-view-avatar"></div>
+      <div class="avatar-effect-wrap profile-view-avatar-wrap">
+        <div class="profile-view-avatar" id="profile-view-avatar"></div>
+        <img class="avatar-effect-img" id="profile-view-avatar-effect" style="display:none;">
+      </div>
       <div class="profile-view-username-row">
         <div class="profile-view-username" id="profile-view-username"></div>
-        <span class="badge-row" id="profile-view-badge-row"></span>
       </div>
+      <div class="badge-row bio-badge-row" id="profile-view-badge-row"></div>
       <div class="profile-view-field">
         <span class="profile-view-label">Bio</span>
         <p id="profile-view-bio" class="profile-view-value"></p>
@@ -384,7 +443,15 @@
         <span class="profile-view-label">Gender</span>
         <p id="profile-view-gender" class="profile-view-value"></p>
       </div>
+      <div class="profile-view-field" id="profile-view-server-role-field" style="display:none;">
+        <span class="profile-view-label">In This Server</span>
+        <p id="profile-view-server-role" class="profile-view-value"></p>
+      </div>
       <div id="profile-view-actions" class="profile-view-actions"></div>
+      <div class="profile-view-field" id="profile-view-wishlist-field" style="display:none;">
+        <span class="profile-view-label">Wishlist</span>
+        <p id="profile-view-wishlist" class="profile-view-value"></p>
+      </div>
     </div>
   </div>
 
