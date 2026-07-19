@@ -70,7 +70,10 @@
         </div>
         <div class="section-label-row">
           <div class="section-label">Channels</div>
-          <button class="add-channel-btn" id="add-channel-btn" style="display:none;" title="Add channel">+</button>
+          <div class="channel-header-btns">
+            <button class="add-channel-btn" id="add-category-btn" style="display:none;" title="Add category">📁+</button>
+            <button class="add-channel-btn" id="add-channel-btn" style="display:none;" title="Add channel">+</button>
+          </div>
         </div>
         <div id="channel-list" class="friends-list"></div>
       </div>
@@ -156,6 +159,8 @@
       <button id="close-channel-modal-btn" class="close-modal-btn">✕</button>
       <h3>Edit Channel</h3>
       <input type="text" id="edit-channel-name" placeholder="Channel name" maxlength="30">
+      <div class="section-label">Category</div>
+      <select id="edit-channel-category"></select>
       <label class="toggle-row" id="channel-lock-row">
         <input type="checkbox" id="edit-channel-allow-talk">
         Allow members to send messages here
@@ -172,6 +177,8 @@
       <button id="close-new-channel-modal-btn" class="close-modal-btn">✕</button>
       <h3>New Channel</h3>
       <input type="text" id="new-channel-name" placeholder="Channel name" maxlength="30">
+      <div class="section-label">Category</div>
+      <select id="new-channel-category"></select>
       <label class="toggle-row">
         <input type="checkbox" id="new-channel-locked">
         Start locked (only you can post)
@@ -180,6 +187,18 @@
         <button id="create-channel-btn">Create</button>
       </div>
       <p id="new-channel-message"></p>
+    </div>
+  </div>
+
+  <div id="new-category-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-new-category-modal-btn" class="close-modal-btn">✕</button>
+      <h3>New Category</h3>
+      <input type="text" id="new-category-name" placeholder="e.g. Important" maxlength="24">
+      <div class="button-row">
+        <button id="create-category-btn">Create</button>
+      </div>
+      <p id="new-category-message"></p>
     </div>
   </div>
 
@@ -238,8 +257,40 @@
         <button id="save-server-settings-btn">Save</button>
       </div>
       <p id="server-settings-message"></p>
+      <div class="section-label">Members & Roles</div>
+      <button id="open-roles-modal-btn" type="button" class="secondary small-btn" style="width:100%;">Manage Roles & Members</button>
       <div class="section-label">Danger Zone</div>
       <button id="delete-server-btn" class="danger" type="button">Delete Server</button>
+    </div>
+  </div>
+
+  <div id="roles-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <button id="close-roles-modal-btn" class="close-modal-btn">✕</button>
+      <h3>Roles & Members</h3>
+      <div class="modal-tabs">
+        <button class="settings-tab active" data-roles-tab="roles" type="button">Roles</button>
+        <button class="settings-tab" data-roles-tab="members" type="button">Members</button>
+      </div>
+
+      <div id="roles-tab-panel" class="modal-panel">
+        <div id="roles-list"></div>
+        <div class="section-label">Create Role</div>
+        <input type="text" id="new-role-name" placeholder="Role name" maxlength="20">
+        <div class="section-label">Color</div>
+        <div class="color-swatch-row" id="new-role-color-swatches"></div>
+        <label class="toggle-row"><input type="checkbox" id="perm-timeout"> Timeout members</label>
+        <label class="toggle-row"><input type="checkbox" id="perm-delete-messages"> Delete any message</label>
+        <label class="toggle-row"><input type="checkbox" id="perm-manage-channels"> Manage channels</label>
+        <div class="button-row">
+          <button id="create-role-btn">Create Role</button>
+        </div>
+        <p id="role-message"></p>
+      </div>
+
+      <div id="members-tab-panel" class="modal-panel" style="display:none;">
+        <div id="members-list"></div>
+      </div>
     </div>
   </div>
 
@@ -267,6 +318,12 @@
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
+        <div id="turbo-banner-image-row" style="display:none;">
+          <div class="section-label">Banner Image (Turbo)</div>
+          <input type="file" id="banner-image-file-input" accept="image/*" style="display:none;">
+          <button type="button" id="banner-image-upload-btn" class="secondary small-btn">Upload Banner Image</button>
+          <p id="banner-image-message" class="settings-note"></p>
+        </div>
         <div class="section-label">Equipped Server Tag</div>
         <select id="profile-equip-tag-select"></select>
         <div class="section-label">Who Can DM Me</div>
