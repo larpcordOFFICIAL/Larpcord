@@ -6,8 +6,9 @@ import { getAvatarColor, getInitial } from './avatar.js';
 import { sendFriendRequest, listenForIncomingRequests, acceptFriendRequest, declineFriendRequest, listenForFriends, friendshipId, unfriendUser, blockUser, unblockUser, listenForBlockedUsers } from './friends.js';
 import { listenForMessages, sendMessage, toggleReaction, toggleSuperReaction, markAsRead, deleteMessage, setTyping, listenForTyping } from './messages.js';
 import { searchGifs } from './giphy.js';
-import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer, setCustomJoinCode, createCategory, deleteCategory, createRole, deleteRole, assignMemberRole, timeoutMember, removeTimeout } from './servers.js';
+import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer, setCustomJoinCode, createCategory, deleteCategory, createRole, deleteRole, assignMemberRole, timeoutMember, removeTimeout, setJoinableTags, setMemberTags, applyLiftToServer } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
+import { listenForShopItems, createShopItem, toggleWishlist, buyShopItem, equipCosmetic } from './shop.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -19,9 +20,12 @@ let myProfile = {};
 let myFriends = [];
 let myBlockedUsers = [];
 let myServers = [];
+let myShopItems = [];
 let currentChat = null;
 let currentServer = null;
 let editingChannel = null;
+let selectedShopItem = null;
+let pendingJoinServerId = null;
 let currentMessagesUnsubscribe = null;
 let currentChannelsUnsubscribe = null;
 let currentJoinRequestsUnsubscribe = null;
@@ -40,6 +44,8 @@ const userExtraCache = {};
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
+
+const BADGE_COLORS = { leaf: "#4ade80", hammer: "#ef4444", gifter: "#f59e0b", turboBasic: "#ec4899", turboPremium: "#8b5cf6" };
 
 const ICONS = {
   smile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>`,
@@ -137,12 +143,16 @@ function memberHasPerm(server, uid, permName) {
   return !!(role && role.perms && role.perms[permName]);
 }
 
-function hasSuperReact() {
-  return myProfile.turboTier === "basic" || myProfile.turboTier === "premium";
+function getRoleColorForMember(uid) {
+  if (!currentServer) return null;
+  const roleId = (currentServer.memberRoles || {})[uid];
+  if (!roleId) return null;
+  const role = (currentServer.roles || {})[roleId];
+  return role ? role.color : null;
 }
 
-function hasBannerImagePerk() {
-  return myProfile.turboTier === "premium";
+function hasSuperReact() {
+  return myProfile.turboTier === "basic" || myProfile.turboTier === "premium";
 }
 
 function showToast(message) {
@@ -158,6 +168,18 @@ function showToast(message) {
   }, 4000);
 }
 
+function renderAvatarEffect(imgEl, itemId) {
+  if (!imgEl) return;
+  const item = itemId ? myShopItems.find((i) => i.id === itemId) : null;
+  if (item) {
+    imgEl.src = item.imageUrl;
+    imgEl.style.display = "block";
+  } else {
+    imgEl.style.display = "none";
+    imgEl.removeAttribute("src");
+  }
+}
+
 function renderMyAvatar() {
   const el = document.getElementById("my-avatar");
   if (myProfile.pfpUrl) {
@@ -170,13 +192,12 @@ function renderMyAvatar() {
     el.style.backgroundColor = getAvatarColor(myUsername);
     el.textContent = getInitial(myUsername);
   }
+  renderAvatarEffect(document.getElementById("my-avatar-effect"), myProfile.equippedEffect);
 }
 
 function renderMyBadgeRow() {
   const el = document.getElementById("my-badge-row");
-  const badgesHtml = renderBadgesHtml(myProfile.badges);
-  const tagHtml = myProfile.equippedTag ? renderEquippedTagHtml(myProfile.equippedTag) : "";
-  if (el) el.innerHTML = badgesHtml + tagHtml;
+  if (el) el.innerHTML = myProfile.equippedTag ? renderEquippedTagHtml(myProfile.equippedTag) : "";
 }
 
 function renderPfpPreview() {
@@ -196,7 +217,7 @@ function renderPfpPreview() {
 
 function renderBadgesHtml(badges) {
   if (!badges || badges.length === 0) return "";
-  return badges.map((b) => `<span class="badge-icon" title="${b}">${BADGE_ICONS[b] || ""}</span>`).join("");
+  return badges.map((b) => `<span class="badge-icon" style="color:${BADGE_COLORS[b] || "#8a8fa3"}" title="${b}">${BADGE_ICONS[b] || ""}</span>`).join("");
 }
 
 function renderEquippedTagHtml(tag) {
@@ -229,10 +250,10 @@ function applyAvatarImage(el, uid) {
   });
 }
 
-function applyBadges(el, uid) {
+function applyEquippedTagOnly(el, uid) {
   if (!el || !uid) return;
   getCachedUserExtra(uid).then((extra) => {
-    el.innerHTML = renderBadgesHtml(extra.badges) + renderEquippedTagHtml(extra.equippedTag);
+    el.innerHTML = renderEquippedTagHtml(extra.equippedTag);
     el.querySelectorAll(".equipped-tag").forEach((tagEl) => {
       tagEl.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -252,6 +273,7 @@ async function handleTagClick(serverId, joinCode) {
   try {
     const result = await joinServerByCode(db, myUid, myUsername, joinCode);
     showToast(result.requested ? "Join request sent!" : `Joined "${result.serverName}"!`);
+    maybeShowJoinTagsModal(result);
   } catch (err) {
     alert(err.message);
   }
@@ -309,6 +331,34 @@ function renderTypingIndicator(typingMap) {
     el.style.display = "block";
   }
 }
+
+// ---------- Join-time tags modal ----------
+
+function maybeShowJoinTagsModal(result) {
+  if (!result || result.requested || !result.joinableTags || result.joinableTags.length === 0) return;
+  pendingJoinServerId = result.serverId;
+  const list = document.getElementById("join-tags-list");
+  list.innerHTML = result.joinableTags.map((tag) => `
+    <label class="toggle-row"><input type="checkbox" class="join-tag-checkbox" value="${escapeHtml(tag)}"> ${escapeHtml(tag)}</label>
+  `).join("");
+  document.getElementById("join-tags-modal-backdrop").style.display = "flex";
+}
+
+on("close-join-tags-modal-btn", "click", () => {
+  document.getElementById("join-tags-modal-backdrop").style.display = "none";
+});
+
+on("save-join-tags-btn", "click", async () => {
+  if (!pendingJoinServerId) return;
+  const selected = [...document.querySelectorAll(".join-tag-checkbox:checked")].map((cb) => cb.value);
+  try {
+    await setMemberTags(db, pendingJoinServerId, myUid, selected);
+  } catch (err) {
+    alert(err.message);
+  }
+  document.getElementById("join-tags-modal-backdrop").style.display = "none";
+  pendingJoinServerId = null;
+});
 
 // ---------- Sidebar nav ----------
 
@@ -415,11 +465,31 @@ on("collect-reward-btn", "click", async () => {
   }
 });
 
+// ---------- Shop ----------
+
 function renderShopMain() {
+  const isAdmin = (myProfile.badges || []).includes("hammer");
   const tier = myProfile.turboTier || null;
+
+  const itemsHtml = myShopItems.length === 0
+    ? `<p class="empty-sub">No items yet.</p>`
+    : myShopItems.map((item) => `
+      <div class="shop-item-mini" data-item-id="${item.id}">
+        <img src="${item.imageUrl}" class="shop-item-mini-img">
+        <div class="shop-item-mini-name">${escapeHtml(item.name)}</div>
+        <div class="shop-item-mini-price">${item.price} Credits</div>
+      </div>
+    `).join("");
+
   document.getElementById("main-area").innerHTML = `
     <div class="shop-main">
-      <div class="empty-logo" style="font-size:24px; margin-bottom: 16px;">Shop</div>
+      <div class="empty-logo" style="font-size:24px; margin-bottom: 10px;">Shop</div>
+
+      <div class="section-label-row">
+        <div class="section-label">Cosmetics</div>
+        ${isAdmin ? `<button class="add-channel-btn" id="open-add-shop-item-btn" title="Add item">+</button>` : ""}
+      </div>
+      <div class="shop-items-row">${itemsHtml}</div>
 
       <div class="turbo-hero-card">
         <div class="turbo-hero-icon">${ICONS.gem}</div>
@@ -430,58 +500,163 @@ function renderShopMain() {
           <div class="turbo-tier-header">
             <span class="turbo-tier-icon">${ICONS.sparkle}</span>
             <span class="turbo-tier-name">TURBO BASIC</span>
-            <span class="turbo-tier-price">300 Credits</span>
           </div>
           <ul class="turbo-perks-list">
             <li>Super Reactions</li>
             <li>Nitro badge on your profile</li>
           </ul>
-          <button id="buy-turbo-basic-btn" ${tier ? "disabled" : ""}>${tier ? (tier === "basic" ? "Owned" : "Included in Turbo") : "Buy"}</button>
+          <div class="turbo-price-squares">
+            <button class="turbo-square turbo-square-monthly" id="buy-basic-monthly-btn" ${tier ? "disabled" : ""}>
+              <span class="turbo-square-label">Monthly</span>
+              <span class="turbo-square-price">100</span>
+            </button>
+            <button class="turbo-square turbo-square-annual" id="buy-basic-annual-btn" ${tier ? "disabled" : ""}>
+              <span class="turbo-square-label">Annual</span>
+              <span class="turbo-square-price">1,000</span>
+            </button>
+          </div>
+          ${tier === "basic" ? `<p class="settings-note" style="text-align:center;">Owned</p>` : (tier === "premium" ? `<p class="settings-note" style="text-align:center;">Included in Turbo</p>` : "")}
         </div>
 
         <div class="turbo-tier-card turbo-tier-premium">
           <div class="turbo-tier-header">
             <span class="turbo-tier-icon">${ICONS.gemSmall}</span>
             <span class="turbo-tier-name">TURBO</span>
-            <span class="turbo-tier-price">1,000 Credits</span>
           </div>
           <ul class="turbo-perks-list">
             <li>Everything in Turbo Basic</li>
-            <li>Image profile banner</li>
+            <li>3 Lifts for a server of your choice</li>
             <li>Premium badge</li>
-            <li>More Lifts, coming soon</li>
           </ul>
-          <button id="buy-turbo-premium-btn" ${tier === "premium" ? "disabled" : ""}>${tier === "premium" ? "Owned" : "Buy"}</button>
+          <div class="turbo-price-squares">
+            <button class="turbo-square turbo-square-monthly" id="buy-premium-monthly-btn" ${tier === "premium" ? "disabled" : ""}>
+              <span class="turbo-square-label">Monthly</span>
+              <span class="turbo-square-price">300</span>
+            </button>
+            <button class="turbo-square turbo-square-annual" id="buy-premium-annual-btn" ${tier === "premium" ? "disabled" : ""}>
+              <span class="turbo-square-label">Annual</span>
+              <span class="turbo-square-price">3,000</span>
+            </button>
+          </div>
+          ${tier === "premium" ? `<p class="settings-note" style="text-align:center;">Owned</p>` : ""}
         </div>
       </div>
-
-      <div class="section-label" style="text-align:center;">Credits Packages</div>
-      <div class="credits-packages">
-        <div class="credit-package-card">
-          <div class="credit-package-amount">500</div>
-          <div class="credit-package-label">Credits</div>
-          <button disabled>Coming Soon</button>
-        </div>
-        <div class="credit-package-card">
-          <div class="credit-package-amount">1,200</div>
-          <div class="credit-package-label">Credits</div>
-          <button disabled>Coming Soon</button>
-        </div>
-        <div class="credit-package-card">
-          <div class="credit-package-amount">2,600</div>
-          <div class="credit-package-label">Credits</div>
-          <button disabled>Coming Soon</button>
-        </div>
-      </div>
-      <p class="settings-note" style="text-align:center;">Direct Credits purchases aren't available yet — earn Credits from Quests for now.</p>
+      <p class="settings-note" style="text-align:center;">Annual is billed once as a lump sum — no recurring billing exists yet, so this is a one-time purchase for now.</p>
     </div>
   `;
-  on("buy-turbo-basic-btn", "click", () => buyTurbo("basic"));
-  on("buy-turbo-premium-btn", "click", () => buyTurbo("premium"));
+
+  document.querySelectorAll(".shop-item-mini").forEach((el) => {
+    el.addEventListener("click", () => openShopItemModal(el.dataset.itemId));
+  });
+  on("open-add-shop-item-btn", "click", () => {
+    document.getElementById("new-item-name").value = "";
+    document.getElementById("new-item-description").value = "";
+    document.getElementById("new-item-price").value = "";
+    document.getElementById("new-item-image-input").value = "";
+    document.getElementById("add-shop-item-message").textContent = "";
+    document.getElementById("add-shop-item-modal-backdrop").style.display = "flex";
+  });
+  on("buy-basic-monthly-btn", "click", () => buyTurbo("basic", 100));
+  on("buy-basic-annual-btn", "click", () => buyTurbo("basic", 1000));
+  on("buy-premium-monthly-btn", "click", () => buyTurbo("premium", 300));
+  on("buy-premium-annual-btn", "click", () => buyTurbo("premium", 3000));
 }
 
-async function buyTurbo(tier) {
-  const cost = tier === "premium" ? 1000 : 300;
+function openShopItemModal(itemId) {
+  const item = myShopItems.find((i) => i.id === itemId);
+  if (!item) return;
+  selectedShopItem = item;
+  document.getElementById("shop-item-modal-image").style.backgroundImage = `url(${item.imageUrl})`;
+  document.getElementById("shop-item-modal-name").textContent = item.name;
+  document.getElementById("shop-item-modal-price").textContent = `${item.price} Credits`;
+  document.getElementById("shop-item-modal-desc").textContent = item.description;
+  document.getElementById("shop-item-modal-message").textContent = "";
+
+  const owned = (myProfile.ownedCosmetics || []).includes(item.id);
+  const wishlisted = (myProfile.wishlist || []).includes(item.id);
+  const buyBtn = document.getElementById("shop-item-buy-btn");
+  const wishBtn = document.getElementById("shop-item-wishlist-btn");
+  buyBtn.textContent = owned ? "Owned" : "Buy";
+  buyBtn.disabled = owned;
+  wishBtn.style.display = owned ? "none" : "inline-block";
+  wishBtn.textContent = wishlisted ? "Remove from Wishlist" : "Add to Wishlist";
+
+  document.getElementById("shop-item-modal-backdrop").style.display = "flex";
+}
+
+on("close-shop-item-modal-btn", "click", () => {
+  document.getElementById("shop-item-modal-backdrop").style.display = "none";
+});
+
+on("shop-item-wishlist-btn", "click", async () => {
+  if (!selectedShopItem) return;
+  const wishlisted = (myProfile.wishlist || []).includes(selectedShopItem.id);
+  try {
+    await toggleWishlist(db, myUid, selectedShopItem.id, !wishlisted);
+    myProfile = { ...myProfile, wishlist: wishlisted ? (myProfile.wishlist || []).filter((id) => id !== selectedShopItem.id) : [...(myProfile.wishlist || []), selectedShopItem.id] };
+    openShopItemModal(selectedShopItem.id);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+on("shop-item-buy-btn", "click", async () => {
+  if (!selectedShopItem) return;
+  const msg = document.getElementById("shop-item-modal-message");
+  try {
+    await buyShopItem(db, myUid, selectedShopItem.id, selectedShopItem.price, myProfile.credits || 0);
+    myProfile = {
+      ...myProfile,
+      credits: (myProfile.credits || 0) - selectedShopItem.price,
+      ownedCosmetics: [...(myProfile.ownedCosmetics || []), selectedShopItem.id],
+      wishlist: (myProfile.wishlist || []).filter((id) => id !== selectedShopItem.id)
+    };
+    msg.textContent = "Purchased!";
+    msg.style.color = "#4ade80";
+    openShopItemModal(selectedShopItem.id);
+    showToast(`${selectedShopItem.name} added to your collection!`);
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
+});
+
+on("close-add-shop-item-modal-btn", "click", () => {
+  document.getElementById("add-shop-item-modal-backdrop").style.display = "none";
+});
+
+on("create-shop-item-btn", "click", async () => {
+  const name = document.getElementById("new-item-name").value.trim();
+  const description = document.getElementById("new-item-description").value.trim();
+  const price = parseInt(document.getElementById("new-item-price").value, 10) || 0;
+  const file = document.getElementById("new-item-image-input").files[0];
+  const msg = document.getElementById("add-shop-item-message");
+  if (!name || !file) {
+    msg.textContent = "Enter a name and pick an image/webp file.";
+    msg.style.color = "#f87171";
+    return;
+  }
+  const btn = document.getElementById("create-shop-item-btn");
+  btn.disabled = true;
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const imageUrl = await uploadProfileImage(file);
+    await createShopItem(db, name, description, price, imageUrl);
+    msg.textContent = "Item added!";
+    msg.style.color = "#4ade80";
+    setTimeout(() => {
+      document.getElementById("add-shop-item-modal-backdrop").style.display = "none";
+    }, 600);
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function buyTurbo(tier, cost) {
   if (myProfile.turboTier === "premium" || myProfile.turboTier === tier) {
     showToast("You already have this.");
     return;
@@ -494,13 +669,19 @@ async function buyTurbo(tier) {
 
   const newBadges = (myProfile.badges || []).filter((b) => b !== "turboBasic" && b !== "turboPremium");
   newBadges.push(tier === "premium" ? "turboPremium" : "turboBasic");
+  const liftsGrant = tier === "premium" ? 3 : 1;
 
   try {
-    await updateDoc(doc(db, "users", myUid), { credits: increment(-cost), turboTier: tier, badges: newBadges });
-    myProfile = { ...myProfile, credits: (myProfile.credits || 0) - cost, turboTier: tier, badges: newBadges };
+    await updateDoc(doc(db, "users", myUid), {
+      credits: increment(-cost),
+      turboTier: tier,
+      badges: newBadges,
+      liftsAvailable: increment(liftsGrant)
+    });
+    myProfile = { ...myProfile, credits: (myProfile.credits || 0) - cost, turboTier: tier, badges: newBadges, liftsAvailable: (myProfile.liftsAvailable || 0) + liftsGrant };
     renderMyBadgeRow();
     renderShopMain();
-    showToast(`${tier === "premium" ? "TURBO" : "TURBO BASIC"} activated!`);
+    showToast(`${tier === "premium" ? "TURBO" : "TURBO BASIC"} activated! You got ${liftsGrant} Lift${liftsGrant === 1 ? "" : "s"} to give a server.`);
   } catch (err) {
     alert(err.message);
   }
@@ -559,6 +740,7 @@ async function renderDiscoverMain() {
           try {
             const result = await joinServerByCode(db, myUid, myUsername, server.joinCode);
             e.target.textContent = result.requested ? "Requested!" : "Joined!";
+            maybeShowJoinTagsModal(result);
           } catch (err) {
             e.target.disabled = false;
             e.target.textContent = "Join";
@@ -596,6 +778,10 @@ onAuthStateChanged(auth, async (user) => {
     myBlockedUsers = blocked;
     renderBlockedUsersList();
   });
+  listenForShopItems(db, (items) => {
+    myShopItems = items;
+    renderMyAvatar();
+  });
 
   const params = new URLSearchParams(window.location.search);
   const joinCode = params.get("join");
@@ -606,6 +792,7 @@ onAuthStateChanged(auth, async (user) => {
       alert(result.requested
         ? `Request sent to join "${result.serverName}"! Waiting for approval.`
         : `Joined "${result.serverName}"!`);
+      maybeShowJoinTagsModal(result);
     } catch (err) {
       alert(err.message);
     }
@@ -724,7 +911,15 @@ function renderServerHeader(server, isOwner) {
   document.getElementById("server-view-name").textContent = server.name;
   const count = server.members ? server.members.length : 1;
   document.getElementById("server-view-count").textContent = `${count} player${count === 1 ? "" : "s"}`;
-  document.getElementById("server-banner").style.backgroundColor = server.bannerColor || "#0000ff";
+  const bannerEl = document.getElementById("server-banner");
+  if (server.bannerImageUrl) {
+    bannerEl.style.backgroundImage = `url(${server.bannerImageUrl})`;
+    bannerEl.style.backgroundSize = "cover";
+    bannerEl.style.backgroundPosition = "center";
+  } else {
+    bannerEl.style.backgroundImage = "none";
+    bannerEl.style.backgroundColor = server.bannerColor || "#0000ff";
+  }
   document.getElementById("server-settings-btn").style.display = isOwner ? "flex" : "none";
   document.getElementById("server-leave-btn").style.display = isOwner ? "none" : "flex";
 }
@@ -960,11 +1155,13 @@ function renderMessages(messages) {
     const row = document.createElement("div");
     row.className = "message-row";
     const linesHtml = group.messages.map((msg) => renderSingleMessage(msg)).join("");
+    const roleColor = currentChat && currentChat.type === "channel" ? getRoleColorForMember(group.senderId) : null;
+    const senderStyle = roleColor ? ` style="color:${roleColor}"` : "";
 
     row.innerHTML = `
       <div class="avatar-circle msg-avatar clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}" style="background-color:${getAvatarColor(group.senderUsername)}">${getInitial(group.senderUsername)}</div>
       <div class="message-content">
-        <span class="message-sender clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}">${escapeHtml(group.senderUsername)}<span class="badge-row" data-uid="${group.senderId}"></span><span class="message-time">${formatTime(group.firstTime)}</span></span>
+        <span class="message-sender clickable-profile" data-uid="${group.senderId}" data-username="${escapeHtml(group.senderUsername)}"${senderStyle}>${escapeHtml(group.senderUsername)}<span class="equipped-tag-slot" data-uid="${group.senderId}"></span><span class="message-time">${formatTime(group.firstTime)}</span></span>
         ${linesHtml}
       </div>
     `;
@@ -979,8 +1176,8 @@ function renderMessages(messages) {
     applyAvatarImage(el, el.dataset.uid);
   });
 
-  list.querySelectorAll(".message-sender > .badge-row").forEach((el) => {
-    applyBadges(el, el.dataset.uid);
+  list.querySelectorAll(".equipped-tag-slot").forEach((el) => {
+    applyEquippedTagOnly(el, el.dataset.uid);
   });
 
   list.querySelectorAll(".react-btn").forEach((btn) => {
@@ -1061,6 +1258,7 @@ function renderMessages(messages) {
       try {
         const result = await joinServerByCode(db, myUid, myUsername, code);
         btn.textContent = result.requested ? "Requested!" : "Joined!";
+        maybeShowJoinTagsModal(result);
       } catch (err) {
         btn.textContent = "Join Server";
         btn.disabled = false;
@@ -1266,13 +1464,24 @@ function openChannel(server, channel) {
   attachComposerListeners(canWrite);
 }
 
+function computeTagPings() {
+  if (!currentServer || !currentServer.joinableTags) return [];
+  const memberTags = currentServer.memberTags || {};
+  return currentServer.joinableTags
+    .map((tag) => ({
+      tagName: tag,
+      uids: Object.keys(memberTags).filter((uid) => (memberTags[uid] || []).includes(tag))
+    }))
+    .filter((tp) => tp.uids.length > 0);
+}
+
 function sendCurrentMessage() {
   const input = document.getElementById("message-input");
   const text = input.value;
   if (!text.trim() || !currentChat) return;
 
   const channelMeta = currentChat.type === "channel"
-    ? { serverId: currentChat.serverId, channelId: currentChat.channelId }
+    ? { serverId: currentChat.serverId, channelId: currentChat.channelId, tagPings: computeTagPings() }
     : null;
 
   sendMessage(db, currentChat.pathSegments, myUid, myUsername, text, replyingTo, null, currentChat.recipientUid || null, null, channelMeta);
@@ -1417,17 +1626,14 @@ async function openProfileView(uid, fallbackUsername) {
   document.getElementById("profile-view-gender").textContent = "Loading...";
   document.getElementById("profile-view-badge-row").innerHTML = "";
   document.getElementById("profile-view-actions").innerHTML = "";
+  document.getElementById("profile-view-server-role-field").style.display = "none";
+  document.getElementById("profile-view-wishlist-field").style.display = "none";
+  renderAvatarEffect(document.getElementById("profile-view-avatar-effect"), null);
   modal.style.display = "flex";
 
   try {
     const data = uid === myUid ? myProfile : (await getDoc(doc(db, "users", uid))).data() || {};
-    if (data.bannerImageUrl) {
-      bannerEl.style.backgroundImage = `url(${data.bannerImageUrl})`;
-      bannerEl.style.backgroundSize = "cover";
-      bannerEl.style.backgroundPosition = "center";
-    } else {
-      bannerEl.style.backgroundColor = data.bannerColor || "#0000ff";
-    }
+    bannerEl.style.backgroundColor = data.bannerColor || "#0000ff";
     document.getElementById("profile-view-bio").textContent = data.bio && data.bio.trim() ? data.bio : "No bio yet.";
     document.getElementById("profile-view-gender").textContent = data.gender && data.gender.trim() ? data.gender : "Not specified";
     document.getElementById("profile-view-badge-row").innerHTML = renderBadgesHtml(data.badges) + renderEquippedTagHtml(data.equippedTag);
@@ -1438,11 +1644,33 @@ async function openProfileView(uid, fallbackUsername) {
       });
     });
     renderProfileViewActions(uid, fallbackUsername, data.dmPrivacy);
+    renderAvatarEffect(document.getElementById("profile-view-avatar-effect"), data.equippedEffect);
     if (data.pfpUrl) {
       avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
       avatarEl.style.backgroundSize = "cover";
       avatarEl.style.backgroundPosition = "center";
       avatarEl.textContent = "";
+    }
+
+    if (currentServer && (currentServer.members || []).includes(uid)) {
+      const roleId = (currentServer.memberRoles || {})[uid];
+      const role = roleId ? (currentServer.roles || {})[roleId] : null;
+      const tags = (currentServer.memberTags || {})[uid] || [];
+      const parts = [];
+      if (role) parts.push(`<span style="color:${role.color}">${escapeHtml(role.name)}</span>`);
+      if (tags.length) parts.push(tags.map((t) => escapeHtml(t)).join(", "));
+      if (parts.length) {
+        document.getElementById("profile-view-server-role-field").style.display = "block";
+        document.getElementById("profile-view-server-role").innerHTML = parts.join(" &middot; ");
+      }
+    }
+
+    const wishlist = data.wishlist || [];
+    if (wishlist.length > 0) {
+      document.getElementById("profile-view-wishlist-field").style.display = "block";
+      document.getElementById("profile-view-wishlist").textContent = wishlist
+        .map((id) => { const item = myShopItems.find((i) => i.id === id); return item ? item.name : "Unknown item"; })
+        .join(", ");
     }
   } catch (err) {
     document.getElementById("profile-view-bio").textContent = "Couldn't load profile.";
@@ -1572,6 +1800,7 @@ on("join-server-btn", "click", async () => {
       : `Joined "${result.serverName}"!`;
     msg.style.color = "#4ade80";
     codeInput.value = "";
+    maybeShowJoinTagsModal(result);
   } catch (err) {
     msg.textContent = err.message;
     msg.style.color = "#f87171";
@@ -1693,17 +1922,38 @@ on("copy-invite-link-btn", "click", async () => {
   }
 });
 
+function renderLiftsBar(server) {
+  const lifts = server.lifts || 0;
+  const filled = Math.min(lifts, 5);
+  document.getElementById("lifts-bar-fill").style.width = `${(filled / 5) * 100}%`;
+  document.getElementById("lifts-count-text").textContent = lifts > 5 ? `${lifts} Lifts` : `${lifts}/5 Lifts`;
+  document.getElementById("apply-lift-btn").style.display = (myProfile.liftsAvailable || 0) > 0 ? "block" : "none";
+
+  const bannerRow = document.getElementById("server-banner-image-row");
+  const bannerLockedNote = document.getElementById("server-banner-locked-note");
+  if (lifts >= 3) {
+    bannerRow.style.display = "block";
+    bannerLockedNote.style.display = "none";
+  } else {
+    bannerRow.style.display = "none";
+    bannerLockedNote.style.display = "block";
+  }
+}
+
 on("server-settings-btn", "click", () => {
   if (!currentServer) return;
   document.getElementById("server-settings-name").value = currentServer.name;
   document.getElementById("server-settings-private").checked = !!currentServer.isPrivate;
   selectedServerBannerColor = currentServer.bannerColor || "#0000ff";
   buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
+  document.getElementById("server-banner-image-message").textContent = "";
   document.getElementById("server-tag-emoji").value = currentServer.tagEmoji || "";
   document.getElementById("server-tag-word").value = currentServer.tagWord || "";
+  document.getElementById("server-joinable-tags").value = (currentServer.joinableTags || []).join(", ");
   document.getElementById("server-custom-code").value = "";
   document.getElementById("custom-code-message").textContent = "";
   document.getElementById("server-settings-message").textContent = "";
+  renderLiftsBar(currentServer);
   editingServerIconUrl = currentServer.iconUrl || null;
   const iconPreview = document.getElementById("server-icon-preview");
   if (editingServerIconUrl) {
@@ -1736,6 +1986,20 @@ on("server-banner-random-btn", "click", () => {
   buildColorSwatches("server-banner-swatches", selectedServerBannerColor, (c) => { selectedServerBannerColor = c; });
 });
 
+on("apply-lift-btn", "click", async () => {
+  if (!currentServer) return;
+  if (!confirm("Apply 1 of your Lifts to this server?")) return;
+  try {
+    await applyLiftToServer(db, currentServer.id, myUid, 1);
+    myProfile = { ...myProfile, liftsAvailable: (myProfile.liftsAvailable || 0) - 1 };
+    currentServer = { ...currentServer, lifts: (currentServer.lifts || 0) + 1 };
+    renderLiftsBar(currentServer);
+    showToast("Lift applied!");
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 on("server-icon-upload-btn", "click", () => {
   document.getElementById("server-icon-file-input").click();
 });
@@ -1762,6 +2026,28 @@ on("server-icon-file-input", "change", async (e) => {
   }
 });
 
+on("server-banner-image-btn", "click", () => {
+  document.getElementById("server-banner-image-input").click();
+});
+
+on("server-banner-image-input", "change", async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentServer) return;
+  const msg = document.getElementById("server-banner-image-message");
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    const url = await uploadProfileImage(file);
+    await updateServerSettings(db, currentServer.id, { bannerImageUrl: url });
+    currentServer = { ...currentServer, bannerImageUrl: url };
+    msg.textContent = "Banner image set!";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
+});
+
 on("save-server-settings-btn", "click", async () => {
   if (!currentServer) return;
   const name = document.getElementById("server-settings-name").value.trim();
@@ -1774,7 +2060,15 @@ on("save-server-settings-btn", "click", async () => {
   const isPrivate = document.getElementById("server-settings-private").checked;
   const tagEmoji = document.getElementById("server-tag-emoji").value.trim();
   const tagWord = document.getElementById("server-tag-word").value.trim().toUpperCase();
-  const updates = { name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord, iconUrl: editingServerIconUrl || null };
+  const joinableTags = document.getElementById("server-joinable-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+
+  if ((tagEmoji || tagWord) && (currentServer.lifts || 0) < 1) {
+    msg.textContent = "Server tag needs at least 1 Lift.";
+    msg.style.color = "#f87171";
+    return;
+  }
+
+  const updates = { name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord, iconUrl: editingServerIconUrl || null, joinableTags };
   if ((myProfile.badges || []).includes("hammer")) {
     updates.featured = document.getElementById("server-settings-featured").checked;
   }
@@ -1804,6 +2098,11 @@ on("set-custom-code-btn", "click", async () => {
   const code = document.getElementById("server-custom-code").value.trim();
   const msg = document.getElementById("custom-code-message");
   if (!code) return;
+  if ((currentServer.lifts || 0) < 5) {
+    msg.textContent = "Custom invite codes need 5 Lifts.";
+    msg.style.color = "#f87171";
+    return;
+  }
   const btn = document.getElementById("set-custom-code-btn");
   btn.disabled = true;
   msg.textContent = "Setting...";
@@ -1882,16 +2181,16 @@ function renderMembersList() {
     item.className = "member-row";
     item.innerHTML = `
       <span class="member-name">${escapeHtml(username)}${isOwnerRow ? ' <span class="owner-tag">Owner</span>' : ""}</span>
-      ${!isOwnerRow ? `<select class="member-role-select"></select>` : ""}
+      <select class="member-role-select"></select>
       ${!isOwnerRow ? `<button class="timeout-btn">${isTimedOut ? "Un-Timeout" : "Timeout 10m"}</button>` : ""}
     `;
+    const select = item.querySelector(".member-role-select");
+    select.innerHTML = `<option value="">No role</option>` +
+      Object.entries(currentServer.roles || {}).map(([rid, r]) => `<option value="${rid}" ${rid === roleId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
+    select.addEventListener("change", async () => {
+      await assignMemberRole(db, currentServer.id, uid, select.value || null);
+    });
     if (!isOwnerRow) {
-      const select = item.querySelector(".member-role-select");
-      select.innerHTML = `<option value="">No role</option>` +
-        Object.entries(currentServer.roles || {}).map(([rid, r]) => `<option value="${rid}" ${rid === roleId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
-      select.addEventListener("change", async () => {
-        await assignMemberRole(db, currentServer.id, uid, select.value || null);
-      });
       item.querySelector(".timeout-btn").addEventListener("click", async () => {
         if (isTimedOut) await removeTimeout(db, currentServer.id, uid);
         else await timeoutMember(db, currentServer.id, uid, 10);
@@ -1964,15 +2263,28 @@ function populateEquipTagSelect() {
   });
 }
 
+function populateEquipCosmeticSelect() {
+  const select = document.getElementById("equip-cosmetic-select");
+  select.innerHTML = `<option value="">None</option>`;
+  (myProfile.ownedCosmetics || []).forEach((itemId) => {
+    const item = myShopItems.find((i) => i.id === itemId);
+    if (!item) return;
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = item.name;
+    if (myProfile.equippedEffect === item.id) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
 on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
   document.getElementById("profile-edit-gender").value = myProfile.gender || "";
   document.getElementById("profile-dm-privacy").value = myProfile.dmPrivacy || "friends";
   selectedProfileBannerColor = myProfile.bannerColor || "#0000ff";
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
-  document.getElementById("turbo-banner-image-row").style.display = hasBannerImagePerk() ? "block" : "none";
-  document.getElementById("banner-image-message").textContent = "";
   populateEquipTagSelect();
+  populateEquipCosmeticSelect();
   document.getElementById("profile-edit-message").textContent = "";
   document.getElementById("pfp-upload-message").textContent = "";
   renderPfpPreview();
@@ -1999,28 +2311,6 @@ on("close-settings-btn", "click", () => {
 on("profile-banner-random-btn", "click", () => {
   selectedProfileBannerColor = randomBannerColor();
   buildColorSwatches("profile-banner-swatches", selectedProfileBannerColor, (c) => { selectedProfileBannerColor = c; });
-});
-
-on("banner-image-upload-btn", "click", () => {
-  document.getElementById("banner-image-file-input").click();
-});
-
-on("banner-image-file-input", "change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const msg = document.getElementById("banner-image-message");
-  msg.textContent = "Uploading...";
-  msg.style.color = "#8a8fa3";
-  try {
-    const url = await uploadProfileImage(file);
-    await updateDoc(doc(db, "users", myUid), { bannerImageUrl: url });
-    myProfile = { ...myProfile, bannerImageUrl: url };
-    msg.textContent = "Banner image set!";
-    msg.style.color = "#4ade80";
-  } catch (err) {
-    msg.textContent = err.message;
-    msg.style.color = "#f87171";
-  }
 });
 
 on("pfp-upload-btn", "click", () => {
@@ -2052,6 +2342,7 @@ on("save-profile-btn", "click", async () => {
   const gender = document.getElementById("profile-edit-gender").value.trim();
   const dmPrivacy = document.getElementById("profile-dm-privacy").value;
   const selectedServerId = document.getElementById("profile-equip-tag-select").value;
+  const equippedEffect = document.getElementById("equip-cosmetic-select").value || null;
   const msg = document.getElementById("profile-edit-message");
   const saveBtn = document.getElementById("save-profile-btn");
   saveBtn.disabled = true;
@@ -2065,9 +2356,10 @@ on("save-profile-btn", "click", async () => {
   }
 
   try {
-    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy });
-    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy };
+    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect });
+    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect };
     renderMyBadgeRow();
+    renderMyAvatar();
     msg.textContent = "Saved!";
     msg.style.color = "#4ade80";
   } catch (err) {
