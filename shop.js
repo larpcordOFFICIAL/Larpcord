@@ -6,13 +6,14 @@ export function listenForShopItems(db, callback) {
   );
 }
 
-export async function createShopItem(db, name, description, price, imageUrl) {
+export async function createShopItem(db, name, description, price, imageUrl, scale = 100) {
   const ref = doc(collection(db, "shopItems"));
   await setDoc(ref, {
     name: name.trim(),
     description: description.trim(),
     price,
     imageUrl,
+    effectScale: scale,
     createdAt: serverTimestamp()
   });
   return ref.id;
