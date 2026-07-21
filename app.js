@@ -39,6 +39,7 @@ let previousMentions = {};
 let mentionsInitialized = false;
 let typingThrottle = 0;
 let editingServerIconUrl = null;
+let newItemImageUrl = null;
 const userExtraCache = {};
 
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
@@ -168,11 +169,14 @@ function showToast(message) {
   }, 4000);
 }
 
-function renderAvatarEffect(imgEl, itemId) {
+function renderAvatarEffect(imgEl, itemId, scale) {
   if (!imgEl) return;
   const item = itemId ? myShopItems.find((i) => i.id === itemId) : null;
   if (item) {
+    const size = scale || item.effectScale || 160;
     imgEl.src = item.imageUrl;
+    imgEl.style.width = `${size}%`;
+    imgEl.style.height = `${size}%`;
     imgEl.style.display = "block";
   } else {
     imgEl.style.display = "none";
@@ -192,7 +196,7 @@ function renderMyAvatar() {
     el.style.backgroundColor = getAvatarColor(myUsername);
     el.textContent = getInitial(myUsername);
   }
-  renderAvatarEffect(document.getElementById("my-avatar-effect"), myProfile.equippedEffect);
+  renderAvatarEffect(document.getElementById("my-avatar-effect"), myProfile.equippedEffect, myProfile.equippedEffectScale);
 }
 
 function renderMyBadgeRow() {
@@ -548,14 +552,7 @@ function renderShopMain() {
   document.querySelectorAll(".shop-item-mini").forEach((el) => {
     el.addEventListener("click", () => openShopItemModal(el.dataset.itemId));
   });
-  on("open-add-shop-item-btn", "click", () => {
-    document.getElementById("new-item-name").value = "";
-    document.getElementById("new-item-description").value = "";
-    document.getElementById("new-item-price").value = "";
-    document.getElementById("new-item-image-input").value = "";
-    document.getElementById("add-shop-item-message").textContent = "";
-    document.getElementById("add-shop-item-modal-backdrop").style.display = "flex";
-  });
+  on("open-add-shop-item-btn", "click", openAddShopItemModal);
   on("buy-basic-monthly-btn", "click", () => buyTurbo("basic", 100));
   on("buy-basic-annual-btn", "click", () => buyTurbo("basic", 1000));
   on("buy-premium-monthly-btn", "click", () => buyTurbo("premium", 300));
@@ -621,28 +618,71 @@ on("shop-item-buy-btn", "click", async () => {
   }
 });
 
+function openAddShopItemModal() {
+  document.getElementById("new-item-name").value = "";
+  document.getElementById("new-item-description").value = "";
+  document.getElementById("new-item-price").value = "";
+  document.getElementById("new-item-image-input").value = "";
+  document.getElementById("add-shop-item-message").textContent = "";
+  newItemImageUrl = null;
+  const previewImg = document.getElementById("new-item-preview-img");
+  previewImg.style.display = "none";
+  document.getElementById("new-item-scale-slider").value = 160;
+  document.getElementById("new-item-scale-label").textContent = "Size: 160%";
+  document.getElementById("add-shop-item-modal-backdrop").style.display = "flex";
+}
+
 on("close-add-shop-item-modal-btn", "click", () => {
   document.getElementById("add-shop-item-modal-backdrop").style.display = "none";
+});
+
+on("new-item-image-input", "change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = document.getElementById("add-shop-item-message");
+  msg.textContent = "Uploading...";
+  msg.style.color = "#8a8fa3";
+  try {
+    newItemImageUrl = await uploadProfileImage(file);
+    const previewImg = document.getElementById("new-item-preview-img");
+    previewImg.src = newItemImageUrl;
+    previewImg.style.display = "block";
+    const scale = document.getElementById("new-item-scale-slider").value;
+    previewImg.style.width = `${scale}%`;
+    previewImg.style.height = `${scale}%`;
+    msg.textContent = "Uploaded! Drag the slider to size it.";
+    msg.style.color = "#4ade80";
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.style.color = "#f87171";
+  }
+});
+
+on("new-item-scale-slider", "input", (e) => {
+  const size = e.target.value;
+  document.getElementById("new-item-scale-label").textContent = `Size: ${size}%`;
+  const previewImg = document.getElementById("new-item-preview-img");
+  previewImg.style.width = `${size}%`;
+  previewImg.style.height = `${size}%`;
 });
 
 on("create-shop-item-btn", "click", async () => {
   const name = document.getElementById("new-item-name").value.trim();
   const description = document.getElementById("new-item-description").value.trim();
   const price = parseInt(document.getElementById("new-item-price").value, 10) || 0;
-  const file = document.getElementById("new-item-image-input").files[0];
+  const scale = parseInt(document.getElementById("new-item-scale-slider").value, 10) || 160;
   const msg = document.getElementById("add-shop-item-message");
-  if (!name || !file) {
-    msg.textContent = "Enter a name and pick an image/webp file.";
+  if (!name || !newItemImageUrl) {
+    msg.textContent = "Enter a name and upload an image/webp file first.";
     msg.style.color = "#f87171";
     return;
   }
   const btn = document.getElementById("create-shop-item-btn");
   btn.disabled = true;
-  msg.textContent = "Uploading...";
+  msg.textContent = "Saving...";
   msg.style.color = "#8a8fa3";
   try {
-    const imageUrl = await uploadProfileImage(file);
-    await createShopItem(db, name, description, price, imageUrl);
+    await createShopItem(db, name, description, price, newItemImageUrl, scale);
     msg.textContent = "Item added!";
     msg.style.color = "#4ade80";
     setTimeout(() => {
@@ -1644,7 +1684,7 @@ async function openProfileView(uid, fallbackUsername) {
       });
     });
     renderProfileViewActions(uid, fallbackUsername, data.dmPrivacy);
-    renderAvatarEffect(document.getElementById("profile-view-avatar-effect"), data.equippedEffect);
+    renderAvatarEffect(document.getElementById("profile-view-avatar-effect"), data.equippedEffect, data.equippedEffectScale);
     if (data.pfpUrl) {
       avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
       avatarEl.style.backgroundSize = "cover";
@@ -2263,6 +2303,33 @@ function populateEquipTagSelect() {
   });
 }
 
+function updateEquipPreview() {
+  const itemId = document.getElementById("equip-cosmetic-select").value;
+  const row = document.getElementById("equip-preview-row");
+  const slider = document.getElementById("equip-scale-slider");
+  const label = document.getElementById("equip-scale-label");
+  if (!itemId) {
+    row.style.display = "none";
+    slider.style.display = "none";
+    label.style.display = "none";
+    return;
+  }
+  const item = myShopItems.find((i) => i.id === itemId);
+  const scale = (myProfile.equippedEffect === itemId && myProfile.equippedEffectScale) ? myProfile.equippedEffectScale : (item ? item.effectScale : 160);
+  row.style.display = "flex";
+  slider.style.display = "block";
+  label.style.display = "block";
+  slider.value = scale;
+  label.textContent = `Size: ${scale}%`;
+  const previewImg = document.getElementById("equip-preview-img");
+  if (item) {
+    previewImg.src = item.imageUrl;
+    previewImg.style.display = "block";
+    previewImg.style.width = `${scale}%`;
+    previewImg.style.height = `${scale}%`;
+  }
+}
+
 function populateEquipCosmeticSelect() {
   const select = document.getElementById("equip-cosmetic-select");
   select.innerHTML = `<option value="">None</option>`;
@@ -2275,7 +2342,18 @@ function populateEquipCosmeticSelect() {
     if (myProfile.equippedEffect === item.id) opt.selected = true;
     select.appendChild(opt);
   });
+  updateEquipPreview();
 }
+
+on("equip-cosmetic-select", "change", updateEquipPreview);
+
+on("equip-scale-slider", "input", (e) => {
+  const size = e.target.value;
+  document.getElementById("equip-scale-label").textContent = `Size: ${size}%`;
+  const previewImg = document.getElementById("equip-preview-img");
+  previewImg.style.width = `${size}%`;
+  previewImg.style.height = `${size}%`;
+});
 
 on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
@@ -2343,6 +2421,7 @@ on("save-profile-btn", "click", async () => {
   const dmPrivacy = document.getElementById("profile-dm-privacy").value;
   const selectedServerId = document.getElementById("profile-equip-tag-select").value;
   const equippedEffect = document.getElementById("equip-cosmetic-select").value || null;
+  const equippedEffectScale = equippedEffect ? parseInt(document.getElementById("equip-scale-slider").value, 10) : null;
   const msg = document.getElementById("profile-edit-message");
   const saveBtn = document.getElementById("save-profile-btn");
   saveBtn.disabled = true;
@@ -2356,8 +2435,8 @@ on("save-profile-btn", "click", async () => {
   }
 
   try {
-    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect });
-    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect };
+    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect, equippedEffectScale });
+    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect, equippedEffectScale };
     renderMyBadgeRow();
     renderMyAvatar();
     msg.textContent = "Saved!";
