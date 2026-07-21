@@ -19,6 +19,10 @@ export async function createShopItem(db, name, description, price, imageUrl, sca
   return ref.id;
 }
 
+export async function updateShopItem(db, itemId, updates) {
+  await updateDoc(doc(db, "shopItems", itemId), updates);
+}
+
 export async function deleteShopItem(db, itemId) {
   await deleteDoc(doc(db, "shopItems", itemId));
 }
