@@ -347,15 +347,8 @@
         <input type="text" id="profile-edit-gender" placeholder="Gender (optional)">
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
-        <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
-                <div class="section-label">Equipped Profile Effect</div>
+        <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</        <div class="section-label">Equipped Profile Effect</div>
         <select id="equip-cosmetic-select"></select>
-        <div class="effect-preview-row" id="equip-preview-row" style="display:none;">
-          <div class="avatar-circle effect-preview-avatar" id="equip-preview-avatar">A</div>
-          <img class="avatar-effect-img" id="equip-preview-img" style="display:none;">
-        </div>
-        <input type="range" id="equip-scale-slider" min="40" max="300" value="160" style="display:none;">
-        <p class="settings-note" id="equip-scale-label" style="display:none;">Size: 160%</p>
 
         <div class="section-label">Equipped Server Tag</div>
         <select id="profile-equip-tag-select"></select>
@@ -415,10 +408,10 @@
     </div>
   </div>
 
-    <div id="add-shop-item-modal-backdrop" class="modal-backdrop" style="display:none;">
+      <div id="add-shop-item-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
       <button id="close-add-shop-item-modal-btn" class="close-modal-btn">✕</button>
-      <h3>Add Shop Item</h3>
+      <h3 id="add-shop-item-title">Add Shop Item</h3>
       <input type="text" id="new-item-name" placeholder="Item name" maxlength="30">
       <textarea id="new-item-description" placeholder="Short description" maxlength="150" rows="2"></textarea>
       <input type="number" id="new-item-price" placeholder="Price in Credits" min="0">
@@ -428,14 +421,18 @@
         <div class="avatar-circle effect-preview-avatar" id="new-item-preview-avatar">A</div>
         <img class="avatar-effect-img" id="new-item-preview-img" style="display:none;">
       </div>
-      <input type="range" id="new-item-scale-slider" min="40" max="300" value="160">
-      <p class="settings-note" id="new-item-scale-label">Size: 160%</p>
+      <input type="range" id="new-item-scale-slider" min="40" max="300" value="100">
+      <p class="settings-note" id="new-item-scale-label">Size: 100%</p>
       <div class="button-row">
         <button id="create-shop-item-btn">Add Item</button>
+      </div>
+      <div class="button-row" id="edit-item-delete-row" style="display:none;">
+        <button id="delete-shop-item-btn" class="danger">Delete Item</button>
       </div>
       <p id="add-shop-item-message"></p>
     </div>
   </div>
+
 
 
   <div id="profile-view-modal-backdrop" class="modal-backdrop" style="display:none;">
