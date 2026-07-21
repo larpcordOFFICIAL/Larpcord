@@ -430,3 +430,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed !important; transform: none 
 
 .danger { background: linear-gradient(135deg, #ef4444, #b91c1c) !important; color: var(--text-main) !important; }
 
+.effect-preview-row { position: relative; width: 90px; height: 90px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; }
+.effect-preview-avatar { width: 56px; height: 56px; font-size: 20px; background-color: #0000ff; }
+.effect-preview-row .avatar-effect-img { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+#new-item-scale-slider, #equip-scale-slider { width: 100%; margin-bottom: 8px; }
