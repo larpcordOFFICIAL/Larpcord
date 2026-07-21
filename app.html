@@ -348,8 +348,15 @@
         <div class="section-label">Banner Color</div>
         <div class="color-swatch-row" id="profile-banner-swatches"></div>
         <button id="profile-banner-random-btn" type="button" class="secondary small-btn">Randomize</button>
-        <div class="section-label">Equipped Profile Effect</div>
+                <div class="section-label">Equipped Profile Effect</div>
         <select id="equip-cosmetic-select"></select>
+        <div class="effect-preview-row" id="equip-preview-row" style="display:none;">
+          <div class="avatar-circle effect-preview-avatar" id="equip-preview-avatar">A</div>
+          <img class="avatar-effect-img" id="equip-preview-img" style="display:none;">
+        </div>
+        <input type="range" id="equip-scale-slider" min="40" max="300" value="160" style="display:none;">
+        <p class="settings-note" id="equip-scale-label" style="display:none;">Size: 160%</p>
+
         <div class="section-label">Equipped Server Tag</div>
         <select id="profile-equip-tag-select"></select>
         <div class="section-label">Who Can DM Me</div>
