@@ -408,7 +408,7 @@
     </div>
   </div>
 
-  <div id="add-shop-item-modal-backdrop" class="modal-backdrop" style="display:none;">
+    <div id="add-shop-item-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
       <button id="close-add-shop-item-modal-btn" class="close-modal-btn">✕</button>
       <h3>Add Shop Item</h3>
@@ -416,12 +416,20 @@
       <textarea id="new-item-description" placeholder="Short description" maxlength="150" rows="2"></textarea>
       <input type="number" id="new-item-price" placeholder="Price in Credits" min="0">
       <input type="file" id="new-item-image-input" accept="image/*,.webp">
+      <div class="section-label">Preview & Size</div>
+      <div class="effect-preview-row">
+        <div class="avatar-circle effect-preview-avatar" id="new-item-preview-avatar">A</div>
+        <img class="avatar-effect-img" id="new-item-preview-img" style="display:none;">
+      </div>
+      <input type="range" id="new-item-scale-slider" min="40" max="300" value="160">
+      <p class="settings-note" id="new-item-scale-label">Size: 160%</p>
       <div class="button-row">
         <button id="create-shop-item-btn">Add Item</button>
       </div>
       <p id="add-shop-item-message"></p>
     </div>
   </div>
+
 
   <div id="profile-view-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="modal-card profile-view-card">
