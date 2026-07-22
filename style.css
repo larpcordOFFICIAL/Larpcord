@@ -434,3 +434,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed !important; transform: none 
 .effect-preview-avatar { width: 56px; height: 56px; font-size: 20px; background-color: #0000ff; }
 .effect-preview-row .avatar-effect-img { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 #new-item-scale-slider, #equip-scale-slider { width: 100%; margin-bottom: 8px; }
+.shop-item-mini { position: relative; }
+.shop-item-edit-btn { position: absolute; top: 4px; right: 4px; background-color: rgba(0,0,0,0.5); color: #ffffff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.shop-item-edit-btn:hover { background-color: rgba(0,0,0,0.75); }
+
