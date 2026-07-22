@@ -8,7 +8,7 @@ import { listenForMessages, sendMessage, toggleReaction, toggleSuperReaction, ma
 import { searchGifs } from './giphy.js';
 import { createServer, joinServerByCode, listenForMyServers, listenForJoinRequests, approveJoinRequest, declineJoinRequest, listenForChannels, updateChannel, deleteChannelDoc, createChannel, updateServerSettings, markChannelRead, clearServerMentions, deleteServerEntirely, leaveServer, setCustomJoinCode, createCategory, deleteCategory, createRole, deleteRole, assignMemberRole, timeoutMember, removeTimeout, setJoinableTags, setMemberTags, applyLiftToServer } from './servers.js';
 import { uploadProfileImage } from './cloudinary.js';
-import { listenForShopItems, createShopItem, toggleWishlist, buyShopItem, equipCosmetic } from './shop.js';
+import { listenForShopItems, createShopItem, updateShopItem, deleteShopItem, toggleWishlist, buyShopItem, equipCosmetic } from './shop.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -25,6 +25,7 @@ let currentChat = null;
 let currentServer = null;
 let editingChannel = null;
 let selectedShopItem = null;
+let editingShopItemId = null;
 let pendingJoinServerId = null;
 let currentMessagesUnsubscribe = null;
 let currentChannelsUnsubscribe = null;
@@ -67,7 +68,8 @@ const ICONS = {
   leaf: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg>`,
   hammer: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"></path><path d="M17.64 15 22 10.64"></path><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"></path></svg>`,
   gift: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"></polyline><rect x="2" y="7" width="20" height="5"></rect><line x1="12" y1="22" x2="12" y2="7"></line><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>`,
-  sparkle: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"></path></svg>`
+  sparkle: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"></path></svg>`,
+  edit: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`
 };
 
 const BADGE_ICONS = {
@@ -156,6 +158,10 @@ function hasSuperReact() {
   return myProfile.turboTier === "basic" || myProfile.turboTier === "premium";
 }
 
+function isAdminUser() {
+  return (myProfile.badges || []).includes("hammer");
+}
+
 function showToast(message) {
   const container = document.getElementById("toast-container");
   if (!container) return;
@@ -169,11 +175,11 @@ function showToast(message) {
   }, 4000);
 }
 
-function renderAvatarEffect(imgEl, itemId, scale) {
+function renderAvatarEffect(imgEl, itemId) {
   if (!imgEl) return;
   const item = itemId ? myShopItems.find((i) => i.id === itemId) : null;
   if (item) {
-    const size = scale || item.effectScale || 160;
+    const size = item.effectScale || 100;
     imgEl.src = item.imageUrl;
     imgEl.style.width = `${size}%`;
     imgEl.style.height = `${size}%`;
@@ -196,7 +202,7 @@ function renderMyAvatar() {
     el.style.backgroundColor = getAvatarColor(myUsername);
     el.textContent = getInitial(myUsername);
   }
-  renderAvatarEffect(document.getElementById("my-avatar-effect"), myProfile.equippedEffect, myProfile.equippedEffectScale);
+  renderAvatarEffect(document.getElementById("my-avatar-effect"), myProfile.equippedEffect);
 }
 
 function renderMyBadgeRow() {
@@ -472,13 +478,14 @@ on("collect-reward-btn", "click", async () => {
 // ---------- Shop ----------
 
 function renderShopMain() {
-  const isAdmin = (myProfile.badges || []).includes("hammer");
+  const isAdmin = isAdminUser();
   const tier = myProfile.turboTier || null;
 
   const itemsHtml = myShopItems.length === 0
     ? `<p class="empty-sub">No items yet.</p>`
     : myShopItems.map((item) => `
       <div class="shop-item-mini" data-item-id="${item.id}">
+        ${isAdmin ? `<button class="shop-item-edit-btn" data-item-id="${item.id}">${ICONS.edit}</button>` : ""}
         <img src="${item.imageUrl}" class="shop-item-mini-img">
         <div class="shop-item-mini-name">${escapeHtml(item.name)}</div>
         <div class="shop-item-mini-price">${item.price} Credits</div>
@@ -552,6 +559,12 @@ function renderShopMain() {
   document.querySelectorAll(".shop-item-mini").forEach((el) => {
     el.addEventListener("click", () => openShopItemModal(el.dataset.itemId));
   });
+  document.querySelectorAll(".shop-item-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEditShopItemModal(btn.dataset.itemId);
+    });
+  });
   on("open-add-shop-item-btn", "click", openAddShopItemModal);
   on("buy-basic-monthly-btn", "click", () => buyTurbo("basic", 100));
   on("buy-basic-annual-btn", "click", () => buyTurbo("basic", 1000));
@@ -618,17 +631,46 @@ on("shop-item-buy-btn", "click", async () => {
   }
 });
 
-function openAddShopItemModal() {
+function resetAddItemFormUI() {
   document.getElementById("new-item-name").value = "";
   document.getElementById("new-item-description").value = "";
   document.getElementById("new-item-price").value = "";
   document.getElementById("new-item-image-input").value = "";
   document.getElementById("add-shop-item-message").textContent = "";
+  document.getElementById("new-item-scale-slider").value = 100;
+  document.getElementById("new-item-scale-label").textContent = "Size: 100%";
+  document.getElementById("new-item-preview-img").style.display = "none";
+}
+
+function openAddShopItemModal() {
+  editingShopItemId = null;
   newItemImageUrl = null;
+  resetAddItemFormUI();
+  document.getElementById("add-shop-item-title").textContent = "Add Shop Item";
+  document.getElementById("create-shop-item-btn").textContent = "Add Item";
+  document.getElementById("edit-item-delete-row").style.display = "none";
+  document.getElementById("add-shop-item-modal-backdrop").style.display = "flex";
+}
+
+function openEditShopItemModal(itemId) {
+  const item = myShopItems.find((i) => i.id === itemId);
+  if (!item) return;
+  editingShopItemId = itemId;
+  newItemImageUrl = item.imageUrl;
+  resetAddItemFormUI();
+  document.getElementById("new-item-name").value = item.name;
+  document.getElementById("new-item-description").value = item.description;
+  document.getElementById("new-item-price").value = item.price;
+  document.getElementById("new-item-scale-slider").value = item.effectScale || 100;
+  document.getElementById("new-item-scale-label").textContent = `Size: ${item.effectScale || 100}%`;
   const previewImg = document.getElementById("new-item-preview-img");
-  previewImg.style.display = "none";
-  document.getElementById("new-item-scale-slider").value = 160;
-  document.getElementById("new-item-scale-label").textContent = "Size: 160%";
+  previewImg.src = item.imageUrl;
+  previewImg.style.display = "block";
+  previewImg.style.width = `${item.effectScale || 100}%`;
+  previewImg.style.height = `${item.effectScale || 100}%`;
+  document.getElementById("add-shop-item-title").textContent = "Edit Shop Item";
+  document.getElementById("create-shop-item-btn").textContent = "Save Changes";
+  document.getElementById("edit-item-delete-row").style.display = "flex";
   document.getElementById("add-shop-item-modal-backdrop").style.display = "flex";
 }
 
@@ -670,7 +712,7 @@ on("create-shop-item-btn", "click", async () => {
   const name = document.getElementById("new-item-name").value.trim();
   const description = document.getElementById("new-item-description").value.trim();
   const price = parseInt(document.getElementById("new-item-price").value, 10) || 0;
-  const scale = parseInt(document.getElementById("new-item-scale-slider").value, 10) || 160;
+  const scale = parseInt(document.getElementById("new-item-scale-slider").value, 10) || 100;
   const msg = document.getElementById("add-shop-item-message");
   if (!name || !newItemImageUrl) {
     msg.textContent = "Enter a name and upload an image/webp file first.";
@@ -682,8 +724,13 @@ on("create-shop-item-btn", "click", async () => {
   msg.textContent = "Saving...";
   msg.style.color = "#8a8fa3";
   try {
-    await createShopItem(db, name, description, price, newItemImageUrl, scale);
-    msg.textContent = "Item added!";
+    if (editingShopItemId) {
+      await updateShopItem(db, editingShopItemId, { name, description, price, imageUrl: newItemImageUrl, effectScale: scale });
+      msg.textContent = "Item updated!";
+    } else {
+      await createShopItem(db, name, description, price, newItemImageUrl, scale);
+      msg.textContent = "Item added!";
+    }
     msg.style.color = "#4ade80";
     setTimeout(() => {
       document.getElementById("add-shop-item-modal-backdrop").style.display = "none";
@@ -693,6 +740,18 @@ on("create-shop-item-btn", "click", async () => {
     msg.style.color = "#f87171";
   } finally {
     btn.disabled = false;
+  }
+});
+
+on("delete-shop-item-btn", "click", async () => {
+  if (!editingShopItemId) return;
+  if (!confirm("Delete this shop item permanently?")) return;
+  try {
+    await deleteShopItem(db, editingShopItemId);
+    document.getElementById("add-shop-item-modal-backdrop").style.display = "none";
+    showToast("Item deleted.");
+  } catch (err) {
+    alert(err.message);
   }
 });
 
@@ -1684,7 +1743,7 @@ async function openProfileView(uid, fallbackUsername) {
       });
     });
     renderProfileViewActions(uid, fallbackUsername, data.dmPrivacy);
-    renderAvatarEffect(document.getElementById("profile-view-avatar-effect"), data.equippedEffect, data.equippedEffectScale);
+    renderAvatarEffect(document.getElementById("profile-view-avatar-effect"), data.equippedEffect);
     if (data.pfpUrl) {
       avatarEl.style.backgroundImage = `url(${data.pfpUrl})`;
       avatarEl.style.backgroundSize = "cover";
@@ -2008,7 +2067,7 @@ on("server-settings-btn", "click", () => {
   }
   document.getElementById("server-icon-message").textContent = "";
   const featuredRow = document.getElementById("featured-toggle-row");
-  if ((myProfile.badges || []).includes("hammer")) {
+  if (isAdminUser()) {
     featuredRow.style.display = "flex";
     document.getElementById("server-settings-featured").checked = !!currentServer.featured;
   } else {
@@ -2109,7 +2168,7 @@ on("save-server-settings-btn", "click", async () => {
   }
 
   const updates = { name, isPrivate, bannerColor: selectedServerBannerColor, tagEmoji, tagWord, iconUrl: editingServerIconUrl || null, joinableTags };
-  if ((myProfile.badges || []).includes("hammer")) {
+  if (isAdminUser()) {
     updates.featured = document.getElementById("server-settings-featured").checked;
   }
   const saveBtn = document.getElementById("save-server-settings-btn");
@@ -2303,33 +2362,6 @@ function populateEquipTagSelect() {
   });
 }
 
-function updateEquipPreview() {
-  const itemId = document.getElementById("equip-cosmetic-select").value;
-  const row = document.getElementById("equip-preview-row");
-  const slider = document.getElementById("equip-scale-slider");
-  const label = document.getElementById("equip-scale-label");
-  if (!itemId) {
-    row.style.display = "none";
-    slider.style.display = "none";
-    label.style.display = "none";
-    return;
-  }
-  const item = myShopItems.find((i) => i.id === itemId);
-  const scale = (myProfile.equippedEffect === itemId && myProfile.equippedEffectScale) ? myProfile.equippedEffectScale : (item ? item.effectScale : 160);
-  row.style.display = "flex";
-  slider.style.display = "block";
-  label.style.display = "block";
-  slider.value = scale;
-  label.textContent = `Size: ${scale}%`;
-  const previewImg = document.getElementById("equip-preview-img");
-  if (item) {
-    previewImg.src = item.imageUrl;
-    previewImg.style.display = "block";
-    previewImg.style.width = `${scale}%`;
-    previewImg.style.height = `${scale}%`;
-  }
-}
-
 function populateEquipCosmeticSelect() {
   const select = document.getElementById("equip-cosmetic-select");
   select.innerHTML = `<option value="">None</option>`;
@@ -2342,18 +2374,7 @@ function populateEquipCosmeticSelect() {
     if (myProfile.equippedEffect === item.id) opt.selected = true;
     select.appendChild(opt);
   });
-  updateEquipPreview();
 }
-
-on("equip-cosmetic-select", "change", updateEquipPreview);
-
-on("equip-scale-slider", "input", (e) => {
-  const size = e.target.value;
-  document.getElementById("equip-scale-label").textContent = `Size: ${size}%`;
-  const previewImg = document.getElementById("equip-preview-img");
-  previewImg.style.width = `${size}%`;
-  previewImg.style.height = `${size}%`;
-});
 
 on("my-profile-settings-btn", "click", () => {
   document.getElementById("profile-edit-bio").value = myProfile.bio || "";
@@ -2421,7 +2442,6 @@ on("save-profile-btn", "click", async () => {
   const dmPrivacy = document.getElementById("profile-dm-privacy").value;
   const selectedServerId = document.getElementById("profile-equip-tag-select").value;
   const equippedEffect = document.getElementById("equip-cosmetic-select").value || null;
-  const equippedEffectScale = equippedEffect ? parseInt(document.getElementById("equip-scale-slider").value, 10) : null;
   const msg = document.getElementById("profile-edit-message");
   const saveBtn = document.getElementById("save-profile-btn");
   saveBtn.disabled = true;
@@ -2435,8 +2455,8 @@ on("save-profile-btn", "click", async () => {
   }
 
   try {
-    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect, equippedEffectScale });
-    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect, equippedEffectScale };
+    await updateDoc(doc(db, "users", myUid), { bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect });
+    myProfile = { ...myProfile, bio, gender, bannerColor: selectedProfileBannerColor, equippedTag, dmPrivacy, equippedEffect };
     renderMyBadgeRow();
     renderMyAvatar();
     msg.textContent = "Saved!";
