@@ -514,7 +514,7 @@ function renderShopMain() {
           </div>
           <ul class="turbo-perks-list">
             <li>Super Reactions</li>
-            <li>Nitro badge on your profile</li>
+            <li>Turbo badge on your profile</li>
           </ul>
           <div class="turbo-price-squares">
             <button class="turbo-square turbo-square-monthly" id="buy-basic-monthly-btn" ${tier ? "disabled" : ""}>
