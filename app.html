@@ -474,13 +474,62 @@
     </div>
   </div>
 
-  <div id="call-overlay" class="call-overlay" style="display:none;">
-    <div class="call-overlay-header">
-      <span id="call-overlay-title">Call</span>
-      <button id="close-call-overlay-btn" class="close-modal-btn">✕</button>
+  <div id="incoming-call-modal" class="call-modal-backdrop" style="display:none;">
+  <div class="call-modal-card">
+    <div class="call-modal-avatar" id="incoming-call-avatar"></div>
+    <div class="call-modal-username" id="incoming-call-username"></div>
+    <div class="call-modal-status">Incoming Call</div>
+    <div class="call-modal-actions">
+      <button id="decline-call-btn" class="call-action-btn call-action-decline">✕</button>
+      <button id="accept-call-btn" class="call-action-btn call-action-accept">✓</button>
     </div>
-    <iframe id="call-iframe" class="call-iframe" allow="camera; microphone; display-capture; fullscreen; autoplay" allowfullscreen></iframe>
   </div>
+</div>
+
+<div id="outgoing-call-modal" class="call-modal-backdrop" style="display:none;">
+  <div class="call-modal-card">
+    <div class="call-modal-avatar" id="outgoing-call-avatar"></div>
+    <div class="call-modal-username" id="outgoing-call-username"></div>
+    <div class="call-modal-status" id="outgoing-call-status">Calling...</div>
+    <div class="call-modal-actions">
+      <button id="cancel-call-btn" class="call-action-btn call-action-decline">✕</button>
+    </div>
+  </div>
+</div>
+
+<div id="call-panel" class="call-panel" style="display:none;">
+  <div class="call-panel-header">
+    <span id="call-panel-status">Connecting...</span>
+    <span id="call-panel-timer">00:00</span>
+    <button id="minimize-call-btn" class="icon-btn" title="Minimize">–</button>
+  </div>
+  <div class="call-panel-stage" id="call-panel-stage">
+    <div class="call-participant" id="call-participant-remote">
+      <video id="remote-video" autoplay playsinline style="display:none;"></video>
+      <div class="call-participant-pfp" id="call-remote-pfp"></div>
+      <div class="call-participant-name" id="call-remote-name"></div>
+      <div class="call-mic-indicator" id="call-remote-mic-indicator" style="display:none;">🔇</div>
+    </div>
+    <div class="call-participant call-participant-self" id="call-participant-local">
+      <video id="local-video" autoplay playsinline muted style="display:none;"></video>
+      <div class="call-participant-pfp" id="call-local-pfp"></div>
+      <div class="call-mic-indicator" id="call-local-mic-indicator" style="display:none;">🔇</div>
+    </div>
+  </div>
+  <div class="call-panel-controls">
+    <button id="call-mic-btn" class="call-control-btn" title="Mute"></button>
+    <button id="call-camera-btn" class="call-control-btn" title="Camera"></button>
+    <button id="call-screenshare-btn" class="call-control-btn" title="Share screen"></button>
+    <button id="call-end-btn" class="call-control-btn call-control-end" title="End call"></button>
+  </div>
+</div>
+
+<div id="call-bubble" class="call-bubble" style="display:none;">
+  <div class="call-bubble-pfp" id="call-bubble-pfp"></div>
+  <span id="call-bubble-timer">00:00</span>
+  <span class="call-bubble-mic" id="call-bubble-mic-icon"></span>
+</div>
+
 
   <script type="module" src="app.js"></script>
 </body>
