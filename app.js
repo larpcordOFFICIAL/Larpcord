@@ -2734,6 +2734,8 @@ async function acceptIncomingCall(call) {
   activeCallSession = new CallSession(db, {
     callId: activeCallId,
     role: "callee",
+    callerUid: call.callerUid
+    friendshipId: call.friendshipId || currentChat?.id,
     onRemoteStream: handleRemoteStream,
     onActiveSpeaker: handleActiveSpeaker,
     onConnectionStateChange: handleConnectionStateChange
