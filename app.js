@@ -59,6 +59,7 @@ const ICONS = {
   power: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`,
   trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
   exit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`,
+  call: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
   people: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
   gem: `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"></path><path d="M2 9h20"></path><path d="M9 3 8 9l4 12 4-12-1-6"></path></svg>`,
   gemSmall: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9Z"></path><path d="M2 9h20"></path><path d="M9 3 8 9l4 12 4-12-1-6"></path></svg>`,
@@ -1230,7 +1231,9 @@ function renderSingleMessage(msg) {
 
   const quickHtml = QUICK_REACTIONS.map((e) => `<span class="emoji-option quick-react" data-msg-id="${msg.id}" data-emoji="${e}">${e}</span>`).join("");
 
-  const contentHtml = msg.invite
+  const contentHtml = msg.call
+    ? `<div class="call-card" data-room="${msg.call.room}"><div class="call-card-icon">${ICONS.call}</div><div class="call-card-text">Started a call</div><button class="join-call-btn" data-room="${msg.call.room}">Join Call</button></div>`
+    : msg.invite
     ? renderInviteCard(msg)
     : msg.gifUrl
     ? `<img class="message-gif" src="${msg.gifUrl}">`
@@ -1343,6 +1346,10 @@ function renderMessages(messages) {
         alert(err.message);
       }
     });
+  });
+
+  list.querySelectorAll(".join-call-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openCallOverlay(btn.dataset.room, null));
   });
 
   list.querySelectorAll(".invite-card").forEach(async (card) => {
@@ -1532,6 +1539,7 @@ function openChat(friend) {
       <div class="chat-header">
         <div class="avatar-circle small-avatar clickable-profile" id="chat-header-avatar" style="background-color:${getAvatarColor(friend.username)}">${getInitial(friend.username)}</div>
         <span class="chat-username clickable-profile" id="chat-header-username">${escapeHtml(friend.username)}</span>
+        <button id="start-call-btn" class="icon-btn" title="Start a call" style="margin-left:auto;"></button>
       </div>
       <div class="messages-list" id="messages-list"></div>
       ${renderComposerHTML(true, `Message @${escapeHtml(friend.username)}`)}
@@ -1541,6 +1549,8 @@ function openChat(friend) {
   applyAvatarImage(document.getElementById("chat-header-avatar"), friend.uid);
   document.getElementById("chat-header-avatar").addEventListener("click", () => openProfileView(friend.uid, friend.username));
   document.getElementById("chat-header-username").addEventListener("click", () => openProfileView(friend.uid, friend.username));
+  setIcon("start-call-btn", ICONS.call);
+  document.getElementById("start-call-btn").addEventListener("click", () => startCall(friend));
 
   if (currentMessagesUnsubscribe) currentMessagesUnsubscribe();
   currentMessagesUnsubscribe = listenForMessages(db, currentChat.pathSegments, renderMessages);
@@ -2583,4 +2593,23 @@ on("delete-account-btn", "click", async () => {
     msg.style.color = "#f87171";
     btn.disabled = false;
   }
+});
+
+// ---------- Calls ----------
+
+function openCallOverlay(roomName, titleText) {
+  document.getElementById("call-overlay-title").textContent = titleText ? `Call with ${titleText}` : "Call";
+  document.getElementById("call-iframe").src = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=false&config.disableDeepLinking=true`;
+  document.getElementById("call-overlay").style.display = "flex";
+}
+
+function startCall(friend) {
+  const roomName = `larpcord-${friendshipId(myUid, friend.uid)}-${Date.now()}`;
+  openCallOverlay(roomName, friend.username);
+  sendMessage(db, currentChat.pathSegments, myUid, myUsername, "", null, null, currentChat.recipientUid || null, null, null, { room: roomName });
+}
+
+on("close-call-overlay-btn", "click", () => {
+  document.getElementById("call-overlay").style.display = "none";
+  document.getElementById("call-iframe").src = "";
 });
