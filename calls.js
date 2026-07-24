@@ -110,6 +110,7 @@ export class CallSession {
     this.pc.ontrack = (event) => {
       event.streams[0]?.getTracks().forEach((t) => this.remoteStream.addTrack(t));
       this.onRemoteStream?.(this.remoteStream);
+      this.watchRemoteSpeaker();
     };
 
     this.pc.onconnectionstatechange = () => {
@@ -156,11 +157,15 @@ export class CallSession {
   _listenRemoteCandidates(remoteRole) {
     if (this.unsubRemoteCandidates) return;
     this.unsubRemoteCandidates = onSnapshot(candidatesCollection(this.db, this.callId, remoteRole), (snap) => {
-      snap.docChanges().forEach((change) => {
+      snap.docChanges().forEach(async (change) => {
         if (change.type === 'added') {
           const candidateData = change.doc.data();
-          if (this.pc.remoteDescription) {
-            this.pc.addIceCandidate(new RTCIceCandidate(candidateData)).catch((e) => console.log('Candidate add error:', e));
+          if (this.pc.remoteDescription && this.pc.remoteDescription.type) {
+            try {
+              await this.pc.addIceCandidate(new RTCIceCandidate(candidateData));
+            } catch (e) {
+              console.log('Candidate add error:', e);
+            }
           } else {
             this.candidateQueue.push(candidateData);
           }
@@ -220,20 +225,24 @@ export class CallSession {
   _watchSpeaker(stream, isLocal) {
     if (!stream.getAudioTracks().length) return;
     if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = this.audioCtx.createMediaStreamSource(stream);
-    const analyser = this.audioCtx.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.6;
-    source.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    const loop = () => {
-      analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      this.onActiveSpeaker?.(isLocal, avg > 12);
-      const id = requestAnimationFrame(loop);
-      if (isLocal) this.localSpeakLoop = id; else this.remoteSpeakLoop = id;
-    };
-    loop();
+    try {
+      const source = this.audioCtx.createMediaStreamSource(stream);
+      const analyser = this.audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.6;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        this.onActiveSpeaker?.(isLocal, avg > 12);
+        const id = requestAnimationFrame(loop);
+        if (isLocal) this.localSpeakLoop = id; else this.remoteSpeakLoop = id;
+      };
+      loop();
+    } catch(e) {
+      console.log('Audio Context error:', e);
+    }
   }
 
   watchRemoteSpeaker() {
