@@ -1,5 +1,4 @@
 import { createCallDoc, listenForIncomingCalls, listenForCall, declineCallDoc, endCallDoc, setCallAnswer, getActiveCallForFriendship, CallSession } from './calls.js';
-
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
@@ -45,6 +44,20 @@ let editingServerIconUrl = null;
 let newItemImageUrl = null;
 const userExtraCache = {};
 
+let activeCallSession = null;
+let activeCallId = null;
+let activeCallRole = null;
+let activeCallFriend = null;
+let callDocUnsubscribe = null;
+let incomingCallsUnsubscribe = null;
+let renderedIncomingCallId = null;
+let callTimerInterval = null;
+let callStartTime = null;
+let callMinimized = false;
+let micMuted = false;
+let cameraEnabled = false;
+let screenShareEnabled = false;
+
 const EMOJI_LIST = ["😀","😂","😍","😎","🥳","😢","😡","👍","👎","❤️","🔥","🎉","💀","😭","🙏","👀","😅","🤔","😴","🤯","💯","✨","🫡","😤"];
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🔥"];
 const BANNER_COLORS = ["#0000ff", "#5b3df5", "#2e7dff", "#ef4444", "#f59e0b", "#4ade80", "#ec4899", "#14b8a6"];
@@ -72,7 +85,13 @@ const ICONS = {
   hammer: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"></path><path d="M17.64 15 22 10.64"></path><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"></path></svg>`,
   gift: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"></polyline><rect x="2" y="7" width="20" height="5"></rect><line x1="12" y1="22" x2="12" y2="7"></line><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>`,
   sparkle: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"></path></svg>`,
-  edit: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`
+  edit: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
+  mic: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>`,
+  micOff: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>`,
+  video: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`,
+  videoOff: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"></path><path d="M22 8.5v7l-6-3.5 6-3.5z"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`,
+  screenShare: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`,
+  phoneEnd: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-2.5 0-4.8.7-6.8 1.9-.4.2-.6.7-.5 1.1l.6 2.3c.1.4.4.7.8.8.9.2 1.9.3 3 .3v2c0 .5.4 1 1 1h4c.5 0 1-.4 1-1v-2c1.1 0 2.1-.1 3-.3.4-.1.7-.4.8-.8l.6-2.3c.1-.4-.1-.9-.5-1.1C16.8 9.7 14.5 9 12 9z"/></svg>`
 };
 
 const BADGE_ICONS = {
@@ -884,6 +903,7 @@ onAuthStateChanged(auth, async (user) => {
     myShopItems = items;
     renderMyAvatar();
   });
+  incomingCallsUnsubscribe = listenForIncomingCalls(db, myUid, handleIncomingCallsSnapshot);
 
   const params = new URLSearchParams(window.location.search);
   const joinCode = params.get("join");
@@ -1234,7 +1254,7 @@ function renderSingleMessage(msg) {
   const quickHtml = QUICK_REACTIONS.map((e) => `<span class="emoji-option quick-react" data-msg-id="${msg.id}" data-emoji="${e}">${e}</span>`).join("");
 
   const contentHtml = msg.call
-    ? `<div class="call-card" data-room="${msg.call.room}"><div class="call-card-icon">${ICONS.call}</div><div class="call-card-text">Started a call</div><button class="join-call-btn" data-room="${msg.call.room}">Join Call</button></div>`
+    ? `<div class="call-card" data-call-id="${msg.call.callId}"><div class="call-card-icon">${ICONS.call}</div><div class="call-card-text" id="call-card-text-${msg.id}">Call Started</div><button class="join-call-btn" data-call-id="${msg.call.callId}" data-caller="${msg.senderId}">Join Call</button></div>`
     : msg.invite
     ? renderInviteCard(msg)
     : msg.gifUrl
@@ -1351,7 +1371,22 @@ function renderMessages(messages) {
   });
 
   list.querySelectorAll(".join-call-btn").forEach((btn) => {
-    btn.addEventListener("click", () => openCallOverlay(btn.dataset.room, null));
+    btn.addEventListener("click", async () => {
+      const callId = btn.dataset.callId;
+      if (activeCallId) { showToast("You're already in a call."); return; }
+      const snap = await getDoc(doc(db, "calls", callId));
+      if (!snap.exists() || snap.data().status === "ended" || snap.data().status === "declined") {
+        btn.disabled = true;
+        btn.textContent = "Call Ended";
+        return;
+      }
+      const call = { id: snap.id, ...snap.data() };
+      if (call.calleeUid === myUid && call.status === "ringing") {
+        acceptIncomingCall(call);
+      } else {
+        showToast("Call is already in progress.");
+      }
+    });
   });
 
   list.querySelectorAll(".invite-card").forEach(async (card) => {
@@ -2599,19 +2634,336 @@ on("delete-account-btn", "click", async () => {
 
 // ---------- Calls ----------
 
-function openCallOverlay(roomName, titleText) {
-  document.getElementById("call-overlay-title").textContent = titleText ? `Call with ${titleText}` : "Call";
-  document.getElementById("call-iframe").src = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=false&config.disableDeepLinking=true`;
-  document.getElementById("call-overlay").style.display = "flex";
+function handleIncomingCallsSnapshot(calls) {
+  if (activeCallId || activeCallSession) return; // already in a call, ignore
+  const call = calls[0];
+  if (!call) {
+    if (document.getElementById("incoming-call-modal").style.display !== "none") {
+      document.getElementById("incoming-call-modal").style.display = "none";
+    }
+    renderedIncomingCallId = null;
+    return;
+  }
+  if (call.id === renderedIncomingCallId) return;
+  renderedIncomingCallId = call.id;
+  showIncomingCallModal(call);
 }
 
-function startCall(friend) {
-  const roomName = `larpcord-${friendshipId(myUid, friend.uid)}-${Date.now()}`;
-  openCallOverlay(roomName, friend.username);
-  sendMessage(db, currentChat.pathSegments, myUid, myUsername, "", null, null, currentChat.recipientUid || null, null, null, { room: roomName });
+function showIncomingCallModal(call) {
+  const avatarEl = document.getElementById("incoming-call-avatar");
+  avatarEl.style.backgroundImage = "none";
+  avatarEl.style.backgroundColor = getAvatarColor(call.callerUsername);
+  applyAvatarImage(avatarEl, call.callerUid);
+  document.getElementById("incoming-call-username").textContent = call.callerUsername;
+  document.getElementById("incoming-call-modal").style.display = "flex";
+
+  const acceptBtn = document.getElementById("accept-call-btn");
+  const declineBtn = document.getElementById("decline-call-btn");
+  const newAccept = acceptBtn.cloneNode(true);
+  const newDecline = declineBtn.cloneNode(true);
+  acceptBtn.replaceWith(newAccept);
+  declineBtn.replaceWith(newDecline);
+
+  newAccept.addEventListener("click", () => acceptIncomingCall(call));
+  newDecline.addEventListener("click", async () => {
+    document.getElementById("incoming-call-modal").style.display = "none";
+    renderedIncomingCallId = null;
+    await declineCallDoc(db, call.id);
+  });
 }
 
-on("close-call-overlay-btn", "click", () => {
-  document.getElementById("call-overlay").style.display = "none";
-  document.getElementById("call-iframe").src = "";
-});
+async function startCall(friend) {
+  if (activeCallId) { showToast("You're already in a call."); return; }
+  const fsId = friendshipId(myUid, friend.uid);
+  const existing = await getActiveCallForFriendship(db, fsId);
+  if (existing) { showToast("There's already an active call with " + friend.username + "."); return; }
+
+  activeCallFriend = friend;
+  activeCallRole = "caller";
+
+  const avatarEl = document.getElementById("outgoing-call-avatar");
+  avatarEl.style.backgroundImage = "none";
+  avatarEl.style.backgroundColor = getAvatarColor(friend.username);
+  applyAvatarImage(avatarEl, friend.uid);
+  document.getElementById("outgoing-call-username").textContent = friend.username;
+  document.getElementById("outgoing-call-status").textContent = "Calling...";
+  document.getElementById("outgoing-call-modal").style.display = "flex";
+
+  try {
+    activeCallId = await createCallDoc(db, fsId, myUid, myUsername, friend.uid, friend.username);
+  } catch (err) {
+    document.getElementById("outgoing-call-modal").style.display = "none";
+    alert(err.message);
+    return;
+  }
+
+  document.getElementById("cancel-call-btn").onclick = () => hangUpCall("cancelled");
+
+  activeCallSession = new CallSession(db, {
+    callId: activeCallId,
+    role: "caller",
+    onRemoteStream: handleRemoteStream,
+    onActiveSpeaker: handleActiveSpeaker,
+    onConnectionStateChange: handleConnectionStateChange
+  });
+
+  try {
+    await activeCallSession.initLocalAudio();
+    await activeCallSession.createOfferAndSend();
+  } catch (err) {
+    showToast("Couldn't access your microphone.");
+    hangUpCall("failed");
+    return;
+  }
+
+  if (currentChat && currentChat.recipientUid === friend.uid) {
+    sendMessage(db, currentChat.pathSegments, myUid, myUsername, "", null, null, friend.uid, null, null, { callId: activeCallId });
+  }
+
+  callDocUnsubscribe = listenForCall(db, activeCallId, handleCallDocUpdate);
+}
+
+async function acceptIncomingCall(call) {
+  document.getElementById("incoming-call-modal").style.display = "none";
+  renderedIncomingCallId = null;
+
+  activeCallId = call.id;
+  activeCallRole = "callee";
+  activeCallFriend = { uid: call.callerUid, username: call.callerUsername };
+
+  activeCallSession = new CallSession(db, {
+    callId: activeCallId,
+    role: "callee",
+    onRemoteStream: handleRemoteStream,
+    onActiveSpeaker: handleActiveSpeaker,
+    onConnectionStateChange: handleConnectionStateChange
+  });
+
+  try {
+    await activeCallSession.initLocalAudio();
+  } catch (err) {
+    showToast("Couldn't access your microphone.");
+    hangUpCall("failed");
+    return;
+  }
+
+  callDocUnsubscribe = listenForCall(db, activeCallId, async (freshCall) => {
+    if (!freshCall) { hangUpCall("ended"); return; }
+    if (freshCall.status === "ended") { hangUpCall("ended"); return; }
+    if (freshCall.offer && activeCallSession && !activeCallSession.pc.currentRemoteDescription) {
+      await activeCallSession.acceptWithAnswer(freshCall.offer);
+      openCallPanel();
+    }
+    handleCallDocUpdate(freshCall);
+  });
+}
+
+function handleCallDocUpdate(call) {
+  if (!call) { hangUpCall("ended"); return; }
+
+  if (activeCallRole === "caller") {
+    if (call.status === "declined") { showToast(call.calleeUsername + " declined the call."); hangUpCall("declined"); return; }
+    if (call.status === "ended") { hangUpCall("ended"); return; }
+    if (call.status === "accepted" && call.answer && activeCallSession) {
+      activeCallSession.applyRemoteAnswer(call.answer).then(() => openCallPanel());
+    }
+  } else {
+    if (call.status === "ended") { hangUpCall("ended"); return; }
+  }
+}
+
+function handleConnectionStateChange(state) {
+  const statusEl = document.getElementById("call-panel-status");
+  if (!statusEl) return;
+  if (state === "connected") {
+    statusEl.textContent = "Connected";
+    if (!callStartTime) startCallTimer();
+  } else if (state === "disconnected" || state === "failed") {
+    statusEl.textContent = state === "failed" ? "Connection failed" : "Reconnecting...";
+    if (state === "failed") setTimeout(() => { if (activeCallId) hangUpCall("failed"); }, 4000);
+  } else if (state === "connecting") {
+    statusEl.textContent = "Connecting...";
+  }
+}
+
+function handleRemoteStream(stream) {
+  const video = document.getElementById("remote-video");
+  const pfp = document.getElementById("call-remote-pfp");
+  video.srcObject = stream;
+  const hasVideo = stream.getVideoTracks().some((t) => t.enabled);
+  video.style.display = hasVideo ? "block" : "none";
+  pfp.style.display = hasVideo ? "none" : "block";
+  activeCallSession?.watchRemoteSpeaker();
+
+  const nameEl = document.getElementById("call-remote-name");
+  const remotePfpEl = document.getElementById("call-remote-pfp");
+  if (activeCallFriend) {
+    nameEl.textContent = activeCallFriend.username;
+    remotePfpEl.style.backgroundColor = getAvatarColor(activeCallFriend.username);
+    applyAvatarImage(remotePfpEl, activeCallFriend.uid);
+  }
+}
+
+function handleActiveSpeaker(isLocal, speaking) {
+  const el = document.getElementById(isLocal ? "call-participant-local" : "call-participant-remote");
+  if (!el) return;
+  el.classList.toggle("speaking", speaking);
+}
+
+function openCallPanel() {
+  document.getElementById("outgoing-call-modal").style.display = "none";
+  document.getElementById("call-panel").style.display = "flex";
+  document.getElementById("call-bubble").style.display = "none";
+  callMinimized = false;
+
+  const localPfp = document.getElementById("call-local-pfp");
+  localPfp.style.backgroundColor = getAvatarColor(myUsername);
+  applyAvatarImage(localPfp, myUid);
+
+  micMuted = false;
+  cameraEnabled = false;
+  screenShareEnabled = false;
+  updateCallControlIcons();
+
+  document.getElementById("call-mic-btn").onclick = toggleMic;
+  document.getElementById("call-camera-btn").onclick = toggleCamera;
+  document.getElementById("call-screenshare-btn").onclick = toggleScreenShare;
+  document.getElementById("call-end-btn").onclick = () => hangUpCall("ended");
+  document.getElementById("minimize-call-btn").onclick = minimizeCall;
+  document.getElementById("call-bubble").onclick = restoreCall;
+
+  if (!navigator.mediaDevices.getDisplayMedia) {
+    document.getElementById("call-screenshare-btn").disabled = true;
+    document.getElementById("call-screenshare-btn").title = "Screen sharing isn't supported on this device/browser";
+  }
+}
+
+function updateCallControlIcons() {
+  const micBtn = document.getElementById("call-mic-btn");
+  const camBtn = document.getElementById("call-camera-btn");
+  const shareBtn = document.getElementById("call-screenshare-btn");
+  const endBtn = document.getElementById("call-end-btn");
+  setIcon("call-mic-btn", micMuted ? ICONS.micOff : ICONS.mic);
+  setIcon("call-camera-btn", cameraEnabled ? ICONS.video : ICONS.videoOff);
+  setIcon("call-screenshare-btn", ICONS.screenShare);
+  setIcon("call-end-btn", ICONS.phoneEnd);
+  micBtn.classList.toggle("off", micMuted);
+  camBtn.classList.toggle("active", cameraEnabled);
+  shareBtn.classList.toggle("active", screenShareEnabled);
+
+  const localMicIndicator = document.getElementById("call-local-mic-indicator");
+  localMicIndicator.style.display = micMuted ? "block" : "none";
+  const bubbleMic = document.getElementById("call-bubble-mic-icon");
+  if (bubbleMic) bubbleMic.textContent = micMuted ? "🔇" : "";
+}
+
+function toggleMic() {
+  micMuted = !micMuted;
+  activeCallSession?.toggleMute(micMuted);
+  updateCallControlIcons();
+}
+
+async function toggleCamera() {
+  if (!activeCallSession) return;
+  const localVideo = document.getElementById("local-video");
+  const localPfp = document.getElementById("call-local-pfp");
+  if (!cameraEnabled) {
+    try {
+      const track = await activeCallSession.enableCamera();
+      const stream = new MediaStream([track]);
+      localVideo.srcObject = stream;
+      localVideo.style.display = "block";
+      localPfp.style.display = "none";
+      cameraEnabled = true;
+    } catch (err) {
+      showToast("Couldn't access your camera.");
+    }
+  } else {
+    activeCallSession.disableCamera();
+    localVideo.style.display = "none";
+    localPfp.style.display = "block";
+    cameraEnabled = false;
+  }
+  updateCallControlIcons();
+}
+
+async function toggleScreenShare() {
+  if (!activeCallSession) return;
+  const stage = document.getElementById("call-panel-stage");
+  const remoteEl = document.getElementById("call-participant-remote");
+  if (!screenShareEnabled) {
+    try {
+      await activeCallSession.startScreenShare(() => {
+        screenShareEnabled = false;
+        stage.classList.remove("screensharing");
+        remoteEl.classList.remove("sharing-screen");
+        updateCallControlIcons();
+      });
+      screenShareEnabled = true;
+      stage.classList.add("screensharing");
+    } catch (err) {
+      showToast("Screen sharing isn't available.");
+    }
+  } else {
+    activeCallSession.stopScreenShare();
+    screenShareEnabled = false;
+    stage.classList.remove("screensharing");
+  }
+  updateCallControlIcons();
+}
+
+function startCallTimer() {
+  callStartTime = Date.now();
+  callTimerInterval = setInterval(() => {
+    const secs = Math.floor((Date.now() - callStartTime) / 1000);
+    const m = String(Math.floor(secs / 60)).padStart(2, "0");
+    const s = String(secs % 60).padStart(2, "0");
+    const text = `${m}:${s}`;
+    const panelTimer = document.getElementById("call-panel-timer");
+    const bubbleTimer = document.getElementById("call-bubble-timer");
+    if (panelTimer) panelTimer.textContent = text;
+    if (bubbleTimer) bubbleTimer.textContent = text;
+  }, 1000);
+}
+
+function minimizeCall() {
+  callMinimized = true;
+  document.getElementById("call-panel").style.display = "none";
+  document.getElementById("call-bubble").style.display = "flex";
+  const bubblePfp = document.getElementById("call-bubble-pfp");
+  if (activeCallFriend) {
+    bubblePfp.style.backgroundColor = getAvatarColor(activeCallFriend.username);
+    applyAvatarImage(bubblePfp, activeCallFriend.uid);
+  }
+}
+
+function restoreCall() {
+  callMinimized = false;
+  document.getElementById("call-bubble").style.display = "none";
+  document.getElementById("call-panel").style.display = "flex";
+}
+
+async function hangUpCall(reason) {
+  if (callDocUnsubscribe) { callDocUnsubscribe(); callDocUnsubscribe = null; }
+  if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
+  callStartTime = null;
+
+  const callIdToEnd = activeCallId;
+  if (activeCallSession) { activeCallSession.cleanup(); activeCallSession = null; }
+
+  document.getElementById("outgoing-call-modal").style.display = "none";
+  document.getElementById("incoming-call-modal").style.display = "none";
+  document.getElementById("call-panel").style.display = "none";
+  document.getElementById("call-bubble").style.display = "none";
+  document.getElementById("remote-video").srcObject = null;
+  document.getElementById("local-video").srcObject = null;
+
+  if (callIdToEnd && reason !== "declined") {
+    await endCallDoc(db, callIdToEnd);
+  }
+
+  activeCallId = null;
+  activeCallRole = null;
+  activeCallFriend = null;
+  renderedIncomingCallId = null;
+}
