@@ -3,7 +3,6 @@ import {
   onSnapshot, query, where, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
-// Clean, reliable public Google STUN servers (prevents broken TURN server connection crashes)
 export const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -74,7 +73,7 @@ export async function deleteCallDoc(db, callId) {
     await Promise.all([...callerCands.docs, ...calleeCands.docs].map((d) => deleteDoc(d.ref)));
     await deleteDoc(doc(db, 'calls', callId));
   } catch (err) {
-    // safe to ignore if already deleted
+    // safe to ignore
   }
 }
 
@@ -104,6 +103,9 @@ export class CallSession {
     this.audioCtx = null;
     this.localSpeakLoop = null;
     this.remoteSpeakLoop = null;
+    
+    // Queue candidates if they arrive before setRemoteDescription finishes
+    this.candidateQueue = [];
 
     this.pc.ontrack = (event) => {
       event.streams[0]?.getTracks().forEach((t) => this.remoteStream.addTrack(t));
@@ -111,9 +113,7 @@ export class CallSession {
     };
 
     this.pc.onconnectionstatechange = () => {
-      if (this.pc.connectionState === 'failed') {
-        console.warn('WebRTC Connection failed');
-      }
+      console.log('WebRTC Connection State:', this.pc.connectionState);
       this.onConnectionStateChange?.(this.pc.connectionState);
     };
 
@@ -141,6 +141,7 @@ export class CallSession {
   async acceptWithAnswer(offer) {
     this._listenRemoteCandidates('caller');
     await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+    await this._flushCandidateQueue();
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
     await setCallAnswer(this.db, this.callId, answer);
@@ -149,6 +150,7 @@ export class CallSession {
   async applyRemoteAnswer(answer) {
     if (this.pc.currentRemoteDescription) return;
     await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
+    await this._flushCandidateQueue();
   }
 
   _listenRemoteCandidates(remoteRole) {
@@ -156,11 +158,26 @@ export class CallSession {
     this.unsubRemoteCandidates = onSnapshot(candidatesCollection(this.db, this.callId, remoteRole), (snap) => {
       snap.docChanges().forEach((change) => {
         if (change.type === 'added') {
-          const candidate = new RTCIceCandidate(change.doc.data());
-          this.pc.addIceCandidate(candidate).catch((e) => console.log('Candidate error ignored:', e));
+          const candidateData = change.doc.data();
+          if (this.pc.remoteDescription) {
+            this.pc.addIceCandidate(new RTCIceCandidate(candidateData)).catch((e) => console.log('Candidate add error:', e));
+          } else {
+            this.candidateQueue.push(candidateData);
+          }
         }
       });
     });
+  }
+
+  async _flushCandidateQueue() {
+    while (this.candidateQueue.length > 0) {
+      const cand = this.candidateQueue.shift();
+      try {
+        await this.pc.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (e) {
+        console.log('Error adding queued candidate:', e);
+      }
+    }
   }
 
   toggleMute(muted) {
