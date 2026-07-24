@@ -1,3 +1,5 @@
+import { createCallDoc, listenForIncomingCalls, listenForCall, declineCallDoc, endCallDoc, setCallAnswer, getActiveCallForFriendship, CallSession } from './calls.js';
+
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, updateEmail, updatePassword, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, increment, serverTimestamp, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
