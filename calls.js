@@ -3,19 +3,20 @@ import {
   onSnapshot, query, where, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
+// Clean, reliable public Google STUN servers (prevents broken TURN server connection crashes)
 export const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' }
 ];
 
 // ---------- Firestore signaling ----------
 
 export async function createCallDoc(db, friendshipIdVal, callerUid, callerUsername, calleeUid, calleeUsername) {
   const ref = await addDoc(collection(db, 'calls'), {
-    friendshipId: friendshipIdVal,
+    friendshipId: friendshipIdVal || '',
     callerUid, callerUsername,
     calleeUid, calleeUsername,
     status: 'ringing',
@@ -37,6 +38,7 @@ export function listenForCall(db, callId, callback) {
 }
 
 export async function getActiveCallForFriendship(db, friendshipIdVal) {
+  if (!friendshipIdVal) return null;
   const q = query(collection(db, 'calls'), where('friendshipId', '==', friendshipIdVal), where('status', 'in', ['ringing', 'accepted']), limit(1));
   const snap = await getDocs(q);
   if (snap.empty) return null;
@@ -72,7 +74,7 @@ export async function deleteCallDoc(db, callId) {
     await Promise.all([...callerCands.docs, ...calleeCands.docs].map((d) => deleteDoc(d.ref)));
     await deleteDoc(doc(db, 'calls', callId));
   } catch (err) {
-    // permission may already be gone once call ended for the other party — safe to ignore
+    // safe to ignore if already deleted
   }
 }
 
@@ -107,7 +109,14 @@ export class CallSession {
       event.streams[0]?.getTracks().forEach((t) => this.remoteStream.addTrack(t));
       this.onRemoteStream?.(this.remoteStream);
     };
-    this.pc.onconnectionstatechange = () => this.onConnectionStateChange?.(this.pc.connectionState);
+
+    this.pc.onconnectionstatechange = () => {
+      if (this.pc.connectionState === 'failed') {
+        console.warn('WebRTC Connection failed');
+      }
+      this.onConnectionStateChange?.(this.pc.connectionState);
+    };
+
     this.pc.onicecandidate = (event) => {
       if (event.candidate) {
         addDoc(candidatesCollection(this.db, this.callId, this.role), event.candidate.toJSON()).catch(() => {});
@@ -130,11 +139,11 @@ export class CallSession {
   }
 
   async acceptWithAnswer(offer) {
+    this._listenRemoteCandidates('caller');
     await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
     await setCallAnswer(this.db, this.callId, answer);
-    this._listenRemoteCandidates('caller');
   }
 
   async applyRemoteAnswer(answer) {
@@ -143,10 +152,12 @@ export class CallSession {
   }
 
   _listenRemoteCandidates(remoteRole) {
+    if (this.unsubRemoteCandidates) return;
     this.unsubRemoteCandidates = onSnapshot(candidatesCollection(this.db, this.callId, remoteRole), (snap) => {
       snap.docChanges().forEach((change) => {
         if (change.type === 'added') {
-          this.pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+          const candidate = new RTCIceCandidate(change.doc.data());
+          this.pc.addIceCandidate(candidate).catch((e) => console.log('Candidate error ignored:', e));
         }
       });
     });
