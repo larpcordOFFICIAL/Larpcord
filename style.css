@@ -420,12 +420,48 @@ button:disabled { opacity: 0.5; cursor: not-allowed !important; transform: none 
 .lifts-public-row .lifts-bar-track { flex: 1; height: 8px; }
 .lifts-public-row .lifts-count { font-size: 11px; flex-shrink: 0; }
 .lifts-public-row #public-apply-lift-btn { margin-bottom: 0 !important; padding: 5px 10px !important; font-size: 11px !important; flex-shrink: 0; }
-.call-overlay { position: fixed; inset: 0; background: #000; z-index: 400; display: flex; flex-direction: column; }
-.call-overlay-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background-color: #101014; color: #ffffff; font-weight: 700; flex-shrink: 0; }
-.call-overlay-header .close-modal-btn { position: static; }
-.call-iframe { flex: 1; width: 100%; border: none; }
-
 .call-card { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; max-width: 220px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .call-card-icon { color: var(--accent-light); }
 .call-card-text { color: var(--text-main); font-weight: 700; font-size: 13px; }
 .join-call-btn { width: 100%; padding: 8px; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #ffffff; font-weight: 700; font-size: 13px; }
+
+.call-modal-backdrop { position: fixed; inset: 0; background: rgba(5,5,7,0.92); z-index: 500; display: flex; align-items: center; justify-content: center; }
+.call-modal-card { text-align: center; }
+.call-modal-avatar { width: 96px; height: 96px; border-radius: 50%; margin: 0 auto 18px; background-color: var(--accent); background-size: cover; background-position: center; box-shadow: 0 0 0 6px rgba(0,0,255,0.15); }
+.call-modal-username { color: var(--text-main); font-weight: 800; font-size: 20px; margin-bottom: 6px; }
+.call-modal-status { color: var(--text-muted); font-size: 14px; margin-bottom: 30px; }
+.call-modal-actions { display: flex; gap: 24px; justify-content: center; }
+.call-action-btn { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; }
+.call-action-accept { background: linear-gradient(135deg, var(--success), #22c55e); }
+.call-action-decline { background: linear-gradient(135deg, #f87171, var(--danger-dark)); }
+
+.call-panel { position: fixed; inset: 0; background: var(--bg-void); z-index: 450; display: flex; flex-direction: column; }
+.call-panel-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; color: var(--text-main); font-size: 13px; font-weight: 600; flex-shrink: 0; }
+.call-panel-header #call-panel-status { flex: 1; }
+.call-panel-stage { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; padding: 16px; position: relative; }
+.call-participant { position: relative; width: 220px; max-width: 42vw; aspect-ratio: 1; border-radius: var(--radius-lg); background-color: var(--bg-card); display: flex; align-items: center; justify-content: center; overflow: hidden; transition: box-shadow 0.2s ease; }
+.call-participant.speaking { box-shadow: 0 0 0 4px var(--accent-light), 0 0 30px rgba(77,77,255,0.6); animation: call-speak-pulse 1.2s ease-in-out infinite; }
+.call-participant video { width: 100%; height: 100%; object-fit: cover; }
+.call-participant-pfp { width: 72px; height: 72px; border-radius: 50%; background-color: var(--accent); background-size: cover; background-position: center; }
+.call-participant-name { position: absolute; bottom: 8px; left: 10px; color: #fff; font-size: 12px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+.call-mic-indicator { position: absolute; bottom: 8px; right: 10px; font-size: 14px; }
+.call-participant-self { position: absolute; bottom: 16px; right: 16px; width: 100px; max-width: 28vw; z-index: 2; border: 2px solid var(--bg-void); }
+.call-panel-stage.screensharing .call-participant:not(.sharing-screen) { position: absolute; bottom: 16px; right: 16px; width: 100px; max-width: 28vw; z-index: 2; }
+.call-panel-stage.screensharing .sharing-screen { width: 100%; height: 100%; max-width: 100%; aspect-ratio: auto; border-radius: 0; }
+@keyframes call-speak-pulse { 0%, 100% { box-shadow: 0 0 0 4px var(--accent-light), 0 0 20px rgba(77,77,255,0.5); } 50% { box-shadow: 0 0 0 6px var(--accent-light), 0 0 34px rgba(77,77,255,0.8); } }
+
+.call-panel-controls { display: flex; justify-content: center; gap: 14px; padding: 18px; flex-shrink: 0; }
+.call-control-btn { width: 52px; height: 52px; border-radius: 50%; background-color: var(--bg-card); color: var(--text-main); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.call-control-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+.call-control-btn.off { background-color: var(--bg-card-2); color: var(--text-dim); }
+.call-control-end { background: linear-gradient(135deg, #f87171, var(--danger-dark)) !important; }
+
+.call-bubble { position: fixed; bottom: 20px; left: 16px; z-index: 460; display: flex; align-items: center; gap: 8px; background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 24px; padding: 6px 14px 6px 6px; box-shadow: var(--shadow-pop); cursor: pointer; }
+.call-bubble-pfp { width: 32px; height: 32px; border-radius: 50%; background-color: var(--accent); background-size: cover; background-position: center; flex-shrink: 0; }
+.call-bubble span { color: var(--text-main); font-size: 12px; font-weight: 700; }
+
+@media (max-width: 600px) {
+  .call-participant { width: 160px; max-width: 60vw; }
+  .call-participant-self { width: 84px; max-width: 32vw; bottom: 10px; right: 10px; }
+  .call-control-btn { width: 48px; height: 48px; }
+}
