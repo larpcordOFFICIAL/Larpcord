@@ -996,6 +996,18 @@ function renderServerRail(servers) {
   mentionsInitialized = true;
 }
 
+function renderPublicLifts(server) {
+  const lifts = server.lifts || 0;
+  const filled = Math.min(lifts, 5);
+  const fillEl = document.getElementById("public-lifts-bar-fill");
+  const textEl = document.getElementById("public-lifts-count-text");
+  const btnEl = document.getElementById("public-apply-lift-btn");
+  if (!fillEl) return;
+  fillEl.style.width = `${(filled / 5) * 100}%`;
+  textEl.textContent = lifts > 5 ? `${lifts} Lifts` : `${lifts}/5 Lifts`;
+  btnEl.style.display = (myProfile.liftsAvailable || 0) > 0 ? "inline-block" : "none";
+}
+
 function renderServerHeader(server, isOwner) {
   const iconEl = document.getElementById("server-header-icon");
   iconEl.style.backgroundImage = "none";
@@ -1035,6 +1047,7 @@ function selectServer(server) {
   const isOwner = server.ownerUid === myUid;
   const canManage = isOwner || memberHasPerm(server, myUid, "manageChannels");
   renderServerHeader(server, isOwner);
+  renderPublicLifts(server);
   document.getElementById("add-channel-btn").style.display = canManage ? "flex" : "none";
   document.getElementById("add-category-btn").style.display = canManage ? "flex" : "none";
 
@@ -2093,6 +2106,20 @@ on("apply-lift-btn", "click", async () => {
     myProfile = { ...myProfile, liftsAvailable: (myProfile.liftsAvailable || 0) - 1 };
     currentServer = { ...currentServer, lifts: (currentServer.lifts || 0) + 1 };
     renderLiftsBar(currentServer);
+    showToast("Lift applied!");
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+on("public-apply-lift-btn", "click", async () => {
+  if (!currentServer) return;
+  if (!confirm("Apply 1 of your Lifts to this server?")) return;
+  try {
+    await applyLiftToServer(db, currentServer.id, myUid, 1);
+    myProfile = { ...myProfile, liftsAvailable: (myProfile.liftsAvailable || 0) - 1 };
+    currentServer = { ...currentServer, lifts: (currentServer.lifts || 0) + 1 };
+    renderPublicLifts(currentServer);
     showToast("Lift applied!");
   } catch (err) {
     alert(err.message);
