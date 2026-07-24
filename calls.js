@@ -3,12 +3,28 @@ import {
   onSnapshot, query, where, serverTimestamp, limit
 } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
+// ICE & TURN Servers for cross-network (Wi-Fi to Cellular) calls
 export const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' }
+  { urls: 'stun:stun4.l.google.com:19302' },
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelay',
+    credential: 'openrelay'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelay',
+    credential: 'openrelay'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelay',
+    credential: 'openrelay'
+  }
 ];
 
 // ---------- Firestore signaling ----------
@@ -104,7 +120,7 @@ export class CallSession {
     this.localSpeakLoop = null;
     this.remoteSpeakLoop = null;
     
-    // Queue candidates if they arrive before setRemoteDescription finishes
+    // Candidate queue for candidates arriving before setRemoteDescription completes
     this.candidateQueue = [];
 
     this.pc.ontrack = (event) => {
